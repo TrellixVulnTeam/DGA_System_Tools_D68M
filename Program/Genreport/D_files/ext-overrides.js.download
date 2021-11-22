@@ -1,0 +1,2578 @@
+/**
+ * Copyright 2018 VMware, Inc.  All rights reserved. -- VMware Confidential
+ */
+
+// Set default paths for the loader.
+Ext.Loader.setConfig({
+    disableCaching: false,
+    paths: {
+        'Ext.vcops': 'js/components',
+        'Ext.vcops.dashboard': 'js/dashboard',
+        'Ext.vcops.dashboard.widget': 'js/widgets',
+        'Ext.vcops.dashboard.widget.editor': 'js/widgets/editors',
+        'Ext.vcops.dashboard.widget.editor.cmp': 'js/widgets/editors/components',
+        'Ext.vcops.chrome': 'js/chrome',
+        'Ext.vcops.chromecontent': 'js/chromecontent'
+    }
+});
+
+// In ExtJS 5 they limited an allowed character list which can be used as part of the component Ids.
+// As a result some of our internal Ids which consist from key based information were failing. We temporarily disabled that logic.
+// Double checked that DOM query is not affected by this change.
+Ext.apply(Ext, {
+    validIdRe: /^.*/i,
+    makeIdSelector: function(id) {
+        //<debug>
+        /*if (!Ext.validIdRe.test(id)) {
+            Ext.Error.raise('Invalid id selector: "' + id + '"');
+        }*/
+        //</debug>
+        return '#' + Ext.escapeId(id);
+    }
+});
+Ext.dom.Element.prototype.validIdRe =  Ext.validIdRe;
+Ext.Component.prototype.validIdRe =  Ext.validIdRe;
+
+// Overridden to fix the problem when the store is being automatically loaded on state restore even when autoLoad is set to false.
+Ext.override(Ext.data.AbstractStore, {
+    applyState: function(state) {
+        var me = this,
+            stateSorters = state.sorters,
+            stateFilters = state.filters,
+            stateGrouper = state.grouper;
+        if (stateSorters) {
+            // VROPS start
+            if (me.autoLoad !== true) {
+                me.getSorters().suspendEvents(false);
+            }
+            // VROPS end
+            me.getSorters().replaceAll(stateSorters);
+            // VROPS start
+            if (me.autoLoad !== true) {
+                me.getSorters().resumeEvents();
+            }
+            // VROPS end
+        }
+        if (stateFilters) {
+            // VROPS start
+            if (me.autoLoad !== true) {
+                me.getFilters().suspendEvents(false);
+            }
+            // VROPS end
+            // We found persisted filters so let's save stateful filters from this point forward.
+            me.saveStatefulFilters = true;
+            me.getFilters().replaceAll(stateFilters);
+            // VROPS start
+            if (me.autoLoad !== true) {
+                me.getFilters().resumeEvents();
+            }
+            // VROPS end
+        }
+        if (stateGrouper) {
+            me.setGrouper(stateGrouper);
+        }
+    },
+    getAt: function(index) {
+        // VROPS
+        return this.getData().getAt(index) || undefined;
+    }
+});
+
+// Fixed a bug in ExtJS code related to email validation rules(bug#2463264).
+Ext.override(Ext.form.field.VTypes, {
+    email: function (value) {
+        return /^(")?(?:[^\."])(?:(?:[\.])?(?:[\w\-!#$%&'*+\/=?\^_`{|}~]))*\1@(\w[\-\w]*\.){1,5}([A-Za-z]){2,}$/.test(value);
+    }
+});
+
+// Fixed a bug in ExtJS code, so that hidingAll must be set to false instead of true.
+Ext.override(Ext.ZIndexManager, {
+    privates: {
+        getMaskBox: function() {
+            var maskTarget = this.mask.maskTarget;
+            if (maskTarget.dom === document.body) {
+                // VROPS
+                var bodyOverflowHidden = window.getComputedStyle(document.body).overflow === "hidden";
+                // If we're masking the body, subtract the border/padding so we don't cause scrollbar.
+                return {
+                    height: /*VROPS*/ bodyOverflowHidden ? Ext.dom.Element.getDocumentHeight() : Math.max(document.body.scrollHeight, Ext.dom.Element.getDocumentHeight()),
+                    width: Math.max(document.body.scrollWidth, Ext.dom.Element.getDocumentWidth()),
+                    x: 0,
+                    y: 0
+                };
+            } else {
+                return maskTarget.getBox();
+            }
+        }
+    }
+});
+
+Ext.override(Ext.layout.Context, {
+    layoutDone: function(layout) {
+        var ownerContext = layout.ownerContext;
+        // VROPS start (TODO)
+        if (ownerContext == null) {
+            return;
+        }
+        // VROPS end
+        layout.running = false;
+        // Once a component layout completes, we can mark it as "done".
+        if (layout.isComponentLayout) {
+            if (ownerContext.measuresBox) {
+                ownerContext.onBoxMeasured();
+            }
+            // be sure to release our boxParent
+            ownerContext.setProp('done', true);
+        } else {
+            ownerContext.setProp('containerLayoutDone', true);
+        }
+        --this.remainingLayouts;
+        ++this.progressCount;
+    },
+    callLayout : function(layout, methodName) {
+        if (layout.owner == null || layout.destroyed) {
+            return;
+        }
+        this.currentLayout = layout;
+        layout[methodName](this.getCmp(layout.owner));
+    }
+});
+
+// Overridden to fix the me.activeItem, must be me.getActiveItem().
+Ext.override(Ext.layout.container.Card, {
+    setActiveItem: function(newCard) {
+        var me = this,
+            owner = me.owner,
+            // VROPS (TODO)
+            oldCard = me.getActiveItem(),
+            rendered = owner.rendered,
+            newIndex, focusNewCard;
+        newCard = me.parseActiveItem(newCard);
+        newIndex = owner.items.indexOf(newCard);
+        // If the card is not a child of the owner, then add it.
+        // Without doing a layout!
+        if (newIndex === -1) {
+            newIndex = owner.items.items.length;
+            Ext.suspendLayouts();
+            newCard = owner.add(newCard);
+            Ext.resumeLayouts();
+        }
+        // Is this a valid, different card?
+        if (newCard && oldCard !== newCard) {
+            // Fire the beforeactivate and beforedeactivate events on the cards
+            if (newCard.fireEvent('beforeactivate', newCard, oldCard) === false) {
+                return false;
+            }
+            if (oldCard && oldCard.fireEvent('beforedeactivate', oldCard, newCard) === false) {
+                return false;
+            }
+            if (rendered) {
+                Ext.suspendLayouts();
+                // If the card has not been rendered yet, now is the time to do so.
+                if (!newCard.rendered) {
+                    me.renderItem(newCard, me.getRenderTarget(), owner.items.length);
+                }
+                if (oldCard) {
+                    if (me.hideInactive) {
+                        // VROPS (TODO)
+                        if (oldCard.el) {
+                            focusNewCard = oldCard.el.contains(Ext.Element.getActiveElement());
+                        }
+                        oldCard.hide();
+                        if (oldCard.hidden) {
+                            oldCard.hiddenByLayout = true;
+                            oldCard.fireEvent('deactivate', oldCard, newCard);
+                        } else // Hide was vetoed, we cannot change cards.
+                        {
+                            return false;
+                        }
+                    }
+                }
+                // Make sure the new card is shown
+                if (newCard.hidden) {
+                    newCard.show();
+                }
+                // Layout needs activeItem to be correct, so clear it if the show has been vetoed,
+                // set it if the show has *not* been vetoed.
+                if (newCard.hidden) {
+                    me.activeItem = newCard = null;
+                } else {
+                    me.activeItem = newCard;
+                    // If the card being hidden contained focus, attempt to focus the new card
+                    // So as not to leave focus undefined.
+                    // The focus() call will focus the defaultFocus if it is a container
+                    // so ensure there is a defaultFocus.
+                    if (focusNewCard) {
+                        if (!newCard.defaultFocus) {
+                            newCard.defaultFocus = ':focusable';
+                        }
+                        newCard.focus();
+                    }
+                }
+                Ext.resumeLayouts(true);
+            } else {
+                me.activeItem = newCard;
+            }
+            newCard.fireEvent('activate', newCard, oldCard);
+            return me.activeItem;
+        }
+        return false;
+    }
+});
+
+Ext.override(Ext.slider.Single, {
+    initComponent: function() {
+        if (this.publishOnComplete) {
+            this.valuePublishEvent = 'changecomplete';
+        }
+        // VROPS
+        this.on('afterrender', this.addTooltipOnHover);
+        this.callParent();
+    },
+    addTooltipOnHover: function() {
+        if (!Ext.isArray(this.plugins) ) {
+            return ;
+        }
+
+        for (var i = 0; i < this.plugins.length; i++) {
+            var tipPlugin = this.plugins[i];
+            if (tipPlugin.isSliderTip) {
+                var thmb = this.thumbs[0];
+                thmb.el.on('mouseover', tipPlugin.onSlide, tipPlugin, thmb);
+                thmb.el.on('mouseout', tipPlugin.hide, tipPlugin, thmb);
+                break;
+            }
+        }
+    }
+});
+
+Ext.override(Ext.form.field.Tag, {
+    minHeight: 24,
+    // VROPS allow img tags to be shown in label bug#2367475
+    getMultiSelectItemMarkup: function() {
+        var me = this,
+            childElCls = (me._getChildElCls && me._getChildElCls()) || '';
+        // hook for rtl cls
+        if (!me.multiSelectItemTpl) {
+            if (!me.labelTpl) {
+                me.labelTpl = '{' + me.displayField + '}';
+            }
+            me.labelTpl = me.lookupTpl('labelTpl');
+            if (me.tipTpl) {
+                me.tipTpl = me.lookupTpl('tipTpl');
+            }
+            me.multiSelectItemTpl = new Ext.XTemplate([
+                '<tpl for=".">',
+                    '<li data-selectionIndex="{[xindex - 1]}" data-recordId="{internalId}" role="presentation" class="' + me.tagItemCls + childElCls,
+                    '<tpl if="this.isSelected(values)">',
+                    ' ' + me.tagSelectedCls,
+                    '</tpl>',
+                    '{%',
+                        'values = values.data;',
+                    '%}',
+                    me.tipTpl ? '" data-qtip="{[this.getTip(values)]}">' : '">',
+                    '<div role="presentation" class="' + me.tagItemTextCls + '">{[this.getItemLabel(values)]}</div>',
+                    '<div role="presentation" class="' + me.tagItemCloseCls + childElCls + '"></div>',
+                    '</li>',
+                '</tpl>',
+                {
+                    isSelected: function(rec) {
+                        return me.selectionModel.isSelected(rec);
+                    },
+                    getItemLabel: function(values) {
+                        //VROPS allow img tags
+                        return DOMPurify.sanitize(me.labelTpl.apply(values), {ALLOWED_TAGS: ['img']});
+                    },
+                    getTip: function(values) {
+                        //VROPS allow 'b', 'br' tags in tip
+                        return DOMPurify.sanitize(me.tipTpl.apply(values), {ALLOWED_TAGS: ['b', 'br']});
+                    },
+                    strict: true
+                }
+            ]);
+        }
+        if (!me.multiSelectItemTpl.isTemplate) {
+            me.multiSelectItemTpl = this.lookupTpl('multiSelectItemTpl');
+        }
+        return me.multiSelectItemTpl.apply(me.valueCollection.getRange());
+    },
+
+    initComponent : function() {
+        var me = this;
+        me.on('afterrender', function() {
+            me.el.dom.onclick = function() {
+                me.focus();
+            }
+        });
+        me.callParent(arguments);
+    }
+});
+
+// Initialize some basic stuff.
+Ext.onReady(function() {
+    Ext.tip.QuickTipManager.init();
+    initStates();
+    Ext.Ajax.setTimeout(300000);
+});
+
+// Added new SUCCESS option for a MessageBox.
+Ext.window.MessageBox.SUCCESS = (Ext.baseCSSPrefix + 'message-box-success');
+
+// Set minWidth to 'auto' for tips.
+Ext.override(Ext.tip.Tip, {
+    minWidth: 'auto'
+});
+
+// Overridden to automatically pass secureToken parameter.
+Ext.override(Ext.form.Panel, {
+    initComponent : function() {
+        this.on('beforeaction', this.formActionHandler);
+        return this.callParent(arguments);
+    },
+    formActionHandler : function(basic, action, eOpts) {
+        if (!basic.baseParams) {
+            basic.baseParams = {};
+        }
+        if (!this.excludeSecureToken) {
+            basic.baseParams.secureToken = secureToken;
+        }
+        return true;
+    }
+});
+
+Ext.override(Ext.view.Table, {
+    getHeaderByCell : function() {
+        var result = this.callParent(arguments);
+        // VROPS start
+        if (result) {
+            return result;
+        } else {
+            return false;
+        }
+        // VROPS end
+    },
+
+    privates: {
+        /**
+         * @override
+         * Fixes issue in version 6.2.1 (validate this override is still necessary after upgrading).
+         * Removing all records of a grid and then clicking on the grid throws error
+         * Before trying to set the focus on a cell validate the actual cell was retrieved instead of false.
+         */
+        setActionableMode: function(enabled, position) {
+            var me = this,
+                navModel = me.getNavigationModel(),
+                activeEl,
+                actionables = me.grid.actionables,
+                len = actionables.length,
+                i, record, column,
+                isActionable = false,
+                lockingPartner, cell;
+            // No mode change.
+            // ownerGrid's call will NOT fire mode change event upon false return.
+            if (me.actionableMode === enabled) {
+                // If we're not actionable already, or (we are actionable already at that position) return false.
+                // Test using mandatory passed position because we may not have an actionPosition if we are
+                // the lockingPartner of an actionable view that contained the action position.
+                //
+                // If we being told to go into actionable mode but at another position, we must continue.
+                // This is just actionable navigation.
+                if (!enabled || position.isEqual(me.actionPosition)) {
+                    return false;
+                }
+            }
+            // If this View or its lockingPartner contains the current focus position, then make the tab bumpers tabbable
+            // and move them to surround the focused row.
+            if (enabled) {
+                if (position && (position.view === me || (position.view === (lockingPartner = me.lockingPartner) && lockingPartner.actionableMode))) {
+                    isActionable = me.activateCell(position);
+                }
+                // Did not enter actionable mode.
+                // ownerGrid's call will NOT fire mode change event upon false return.
+                return isActionable;
+            } else {
+                // Capture before exiting from actionable mode moves focus
+                activeEl = Ext.fly(Ext.Element.getActiveElement());
+                // Blur the focused descendant, but do not trigger focusLeave.
+                // This is so that when the focus is restored to the cell which contained
+                // the active content, it will not be a FocusEnter from the universe.
+                if (me.el.contains(activeEl) && !Ext.fly(activeEl).is(me.getCellSelector())) {
+                    // Row to return focus to.
+                    record = (me.actionPosition && me.actionPosition.record) || me.getRecord(activeEl);
+                    column = me.getHeaderByCell(activeEl.findParent(me.getCellSelector()));
+                    cell = position && position.getCell(true);
+                    // Do not allow focus to fly out of the view when the actionables are deactivated
+                    // (and blurred/hidden). Restore focus to the cell in which actionable mode is active.
+                    // Note that the original position may no longer be valid, e.g. when the record
+                    // was removed.
+                    if (!position || !cell) {
+                        position = new Ext.grid.CellContext(me).setPosition(record || 0, column || 0);
+                        cell = position.getCell(true);
+                    }
+                    // Ext.grid.NavigationModel#onFocusMove will NOT react and navigate because the actionableMode
+                    // flag is still set at this point.
+                    if (cell !== false) {//VROPS https://www.sencha.com/forum/showthread.php?468608-6-5-2-Classic-Removing-all-records-of-a-grid-and-then-clicking-within-it-throws-err
+                        Ext.fly(cell).focus();
+                    }//VROPS
+                    // Let's update the activeEl after focus here
+                    activeEl = Ext.fly(Ext.Element.getActiveElement());
+                    // If that focus triggered handlers (eg CellEditor after edit handlers) which
+                    // programmatically moved focus somewhere, and the target cell has been unfocused, defer to that,
+                    // null out position, so that we do not navigate to that cell below.
+                    // See EXTJS-20395
+                    if (!(me.el.contains(activeEl) && activeEl.is(me.getCellSelector()))) {
+                        position = null;
+                    }
+                }
+                // We are exiting actionable mode.
+                // Tell all registered Actionables about this fact if they need to know.
+                for (i = 0; i < len; i++) {
+                    if (actionables[i].deactivate) {
+                        actionables[i].deactivate();
+                    }
+                }
+                // If we had begun action (we may be a dormant lockingPartner), make any tabbables untabbable
+                if (me.actionRow) {
+                    me.actionRow.saveTabbableState({
+                        skipSelf: true,
+                        includeSaved: false
+                    });
+                }
+                if (me.destroyed) {
+                    return false;
+                }
+                // These flags MUST be set before focus restoration to the owning cell.
+                // so that when Ext.grid.NavigationModel#setPosition attempts to exit actionable mode, we don't recurse.
+                me.actionableMode = me.ownerGrid.actionableMode = false;
+                me.actionPosition = navModel.actionPosition = me.actionRow = null;
+                // Push focus out to where it was requested to go.
+                if (position) {
+                    navModel.setPosition(position);
+                }
+            }
+        }
+    }
+});
+
+Ext.override(Ext.grid.NavigationModel, {
+    focusPosition: function(position) {
+        var me = this,
+            view,
+            row,
+            scroller;
+
+        me.item = me.cell = null;
+        if (position && position.record && position.column) {
+            view = position.view;
+
+            // If the position is passed from a grid event, the rowElement will be stamped into it.
+            // Otherwise, select it from the indicated item.
+            if (position.rowElement) {
+                row = me.item = position.rowElement;
+            } else {
+                // Get the dataview item for the position's record
+                row = view.getRowByRecord(position.record);
+                // If there is no item at that index, it's probably because there's buffered rendering.
+                // This is handled below.
+            }
+            if (row) {
+
+                // If the position is passed from a grid event, the cellElement will be stamped into it.
+                // Otherwise, select it from the row.
+                me.cell = position.cellElement || Ext.fly(row).down(position.column.getCellSelector(), true);
+
+                // Maintain the cell as a Flyweight to avoid transient elements ending up in the cache as full Ext.Elements.
+                if (me.cell) {
+                    me.cell = new Ext.dom.Fly(me.cell);
+
+                    // Maintain lastFocused in the view so that on non-specific focus of the View, we can focus the view's correct descendant.
+                    view.lastFocused = me.lastFocused = me.position.clone();
+
+                    // Use explicit scrolling rather than relying on the browser's focus behaviour.
+                    // Scroll on focus overscrolls. ensureVisible scrolls exatly correctly.
+                    scroller = view.getScrollable();
+                    if (scroller) {
+                        scroller.ensureVisible(me.cell);
+                    }
+                    me.focusItem(me.cell);
+                    //VROPS start
+                    var hasAllClses = true;
+                    var oldFocusStyles = view.removeClsWithUI(view.focusCls, true);
+                    for(var o = 0; o < oldFocusStyles.length; o++) {
+                        if (!view.focusEl.hasCls(oldFocusStyles[o])) {
+                            hasAllClses = false;
+                            break;
+                        }
+                    }
+                    if (hasAllClses) {
+                        view.focusEl.removeCls(oldFocusStyles);
+                    }
+                    //VROPS end
+                    view.focusEl = me.cell;
+                }
+                // Cell no longer in view. Clear current position.
+                else {
+                    me.position.setAll();
+                    me.record = me.column = me.recordIndex = me.columnIndex = null;
+                }
+            }
+            // View node no longer in view. Clear current position.
+            // Attempt to scroll to the record if it is in the store, but out of rendered range.
+            else {
+                row = view.dataSource.indexOf(position.record);
+                me.position.setAll();
+                me.record = me.column = me.recordIndex = me.columnIndex = null;
+
+                // The reason why the row could not be selected from the DOM could be because it's
+                // out of rendered range, so scroll to the row, and then try focusing it.
+                if (row !== -1 && view.bufferedRenderer) {
+                    me.lastKeyEvent = null;
+                    view.bufferedRenderer.scrollTo(row, false, me.afterBufferedScrollTo, me);
+                }
+            }
+        }
+    }
+});
+
+Ext.override(Ext.direct.RemotingProvider, {
+    // VROPS
+    enableBuffer : false
+});
+
+// Session state manager implementation.
+Ext.override(Ext.state.Manager, {
+    set : function(key, value, scope) {
+        this.provider.set(key, value, scope);
+    },
+    setNow : function(name, value, async, scope) {
+        this.provider.setNow(name, value, async, scope);
+    },
+    get : function(key, defaultValue, scope) {
+        return this.provider.get(key, defaultValue, scope);
+    }
+});
+
+// Override default AJAX timeouts.
+Ext.override(Ext.Ajax, {
+    timeout : 300000
+});
+Ext.override(Ext.data.Connection, {
+    timeout : 300000
+});
+
+// Automatically HTML encode the text being shown in combo.
+Ext.override(Ext.view.BoundList, {
+    getInnerTpl : function(displayField) {
+        // VROPS
+        return '{[htmlEncode(values.' + displayField + ')]}';
+    },
+    constructor: function() {
+        var ret = this.callParent(arguments);
+        this.on('show', function(cmp) {
+            addHideableItem(cmp);
+        });
+        this.on('hide', function(cmp) {
+            removeHideableItem(cmp);
+        });
+        this.on('beforedestroy', function(cmp) {
+            removeHideableItem(cmp);
+        });
+        return ret;
+    }
+});
+
+Ext.override(Ext.form.CheckboxGroup, {
+    initComponent: function() {
+        // VROPS
+        if (this.initialConfig && this.initialConfig.labelStyle == 'auto') {
+            this.on('render', function() {
+                var label = this.getEl().down('label[class*=x-form-item-label]');
+                var cbLabels =  this.getEl().query('label[class*=x-form-cb-label]');
+                var labelInner = this.getEl().down('span[class*=x-form-item-label-inner]');
+                for (var i = 0; i < cbLabels.length; i++) {
+                    cbLabels[i].style.whiteSpace = 'nowrap';
+                }
+                label.dom.style.width = null;
+                labelInner.dom.style.width = null;
+            });
+        }
+        return this.callParent(arguments);
+    }
+});
+
+Ext.override(Ext.form.field.Base, {
+    initComponent: function() {
+        // VROPS
+        if (this.initialConfig && this.initialConfig.labelStyle == 'auto') {
+            this.on('render', function() {
+                var label = this.getEl().down('label[class*=x-form-item-label]');
+                var labelInner = this.getEl().down('span[class*=x-form-item-label-inner]');
+                var fieldBody = this.getEl().down('div[class*=x-form-item-body]');
+                label.dom.style.width = null;
+                labelInner.dom.style.width = null;
+                var w = this.getEl().dom.style.width;
+                this.getEl().dom.style.width = null;
+                fieldBody.dom.style.minWidth = 'initial';
+                fieldBody.dom.style.maxWidth = 'initial';
+                if (w) {
+                    fieldBody.dom.style.width = w;
+                }
+            });
+        }
+
+        // VROPS accessibility related issue, with empty labels
+        this.on('afterrender', function() {
+            if (this.inputEl) {
+                var labelEl = this.labelEl;
+                if (labelEl) {
+                    var labelTextEl = labelEl.down('.x-form-item-label-text');
+                    if (labelTextEl && labelTextEl.el && Ext.isEmpty(labelTextEl.el.dom.innerText)) {
+                        var fieldParent = this.el.dom.parentNode;
+                        var fieldPosition = this.el.getXY();
+                        // try from left (label located left to the field)
+                        var labelAssigned = this.assingLabelValue(fieldPosition, labelTextEl, fieldParent, true);
+                        // try from right (label located right to the field)
+                        if (!labelAssigned /*&& !Ext.isEmpty(this.boxLabel)*/) {
+                            this.assingLabelValue(fieldPosition, labelTextEl, fieldParent, false, this.inputEl.getWidth());
+                        }
+                    }
+                }
+            }
+        }, this, {delay : 100, scope : this});
+
+        return this.callParent(arguments);
+    },
+
+    // VROPS
+    assingLabelValue : function(fieldPosition, labelTextEl, fieldParent, toLeft, rightOffset) {
+        var nearbyElements_;
+        if (Ext.isEdge) {
+            nearbyElements_ = document.msElementsFromPoint(fieldPosition[0] - (toLeft ? 50 : -(50+rightOffset)), fieldPosition[1]);
+        } else if (document.elementsFromPoint) {
+            nearbyElements_ = document.elementsFromPoint(fieldPosition[0] - (toLeft ? 50 : -(50+rightOffset)), fieldPosition[1]);
+        }
+        var labelAssigned = false;
+        if (nearbyElements_ != null) {
+            var nearbyElement_ = null;
+            for (var i = 0; i < nearbyElements_.length; i++) {
+                nearbyElement_ = nearbyElements_[i];
+                if (this.containsChildElement(fieldParent, nearbyElement_, 3) && !Ext.isEmpty(nearbyElement_.innerText)) {
+                    labelTextEl.el.dom.innerText = nearbyElement_.innerText;
+                    labelAssigned = true;
+                    break;
+                }
+            }
+        }
+        return labelAssigned;
+    },
+
+    // VROPS
+    containsChildElement : function(parentElement, childElement, levelsToTry) {
+        if (parentElement.contains(childElement)) {
+            return true;
+        } else if (levelsToTry >= 1 && parentElement.parentNode != null) {
+            return this.containsChildElement(parentElement.parentNode, childElement, (levelsToTry-1));
+        }
+        return false;
+    }
+});
+
+Ext.override(Ext.form.RadioGroup, {
+    //Usage example
+    //fieldNameWithNS and fieldNameOriginal used to fix problem with many radios with the same name
+    /*  Ext.create('Ext.form.RadioGroup', {
+        fieldNameWithNS: 'dtEnabled' + me.ns,//same as name
+        fieldNameOriginal: 'dtEnabled',
+        items: [{
+            boxLabel: bundle['manageResource.yes'],
+            inputValue: true,
+            name: 'dtEnabled' + me.ns,
+            checked: true
+        },{
+            boxLabel: bundle['manageResource.no'],
+            inputValue: false,
+            name: 'dtEnabled' + me.ns
+        }]
+    });  */
+    initComponent: function() {
+        // VROPS start
+        var config = this.initialConfig;
+        if (config.namespace != null) {
+            this.fieldNameOriginal = "";
+            this.fieldNameWithNS = "";
+            for (var i in config.items) {
+                var item = config.items[i];
+                var name = config.items[i].name;
+                if (!this.fieldNameOriginal) {
+                    this.fieldNameOriginal = name;
+                    this.fieldNameWithNS = name + "_" + config.namespace;
+                }
+                config.items[i].name = this.fieldNameWithNS;
+            }
+        }
+        // VROPS end
+        return this.callParent(arguments);
+    },
+    getValue: function() {
+        var value = this.callParent(arguments);
+        // VROPS start
+        if (this.fieldNameOriginal != null) {
+            var obj = {};
+            obj[this.fieldNameOriginal] = value[this.fieldNameWithNS];
+            return obj;
+        }
+        // VROPS end
+        return value;
+    },
+    setValue: function(data) {
+        // VROPS start
+        var value;
+        if (data && this.fieldNameWithNS != null && this.fieldNameOriginal != null) {
+            var _data = {};
+            _data[this.fieldNameWithNS] = data[this.fieldNameOriginal];
+            value = _data;
+        } else {
+            value = data;
+        }
+        // VROPS end
+        var items = this.items,
+            cbValue, cmp, formId, radios, i, len, name, otherRadios;
+        Ext.suspendLayouts();
+        if (this.simpleValue) {
+            for (i = 0 , len = items.length; i < len; ++i) {
+                cmp = items.items[i];
+                cmp.$groupChange = true;
+                cmp.setValue(cmp.inputValue === value);
+                delete cmp.$groupChange;
+            }
+        } else if (Ext.isObject(value)) {
+            cmp = items.first();
+            formId = cmp ? cmp.getFormId() : null;
+            for (name in value) {
+                cbValue = value[name];
+                radios = Ext.form.RadioManager.getWithValue(name, cbValue, formId).items;
+                len = radios.length;
+                for (i = 0; i < len; ++i) {
+                    radios[i].setValue(true);
+                }
+                // VROPS start
+                if (!this.rendered) {
+                    otherRadios = Ext.form.RadioManager.getWithDifferentValue(name, cbValue, formId).items;
+                    len = otherRadios.length;
+                    for (i = 0; i < len; ++i) {
+                        otherRadios[i].setValue(false);
+                    }
+                }
+                // VROPS end
+            }
+        }
+        Ext.resumeLayouts(true);
+        return this;
+    }
+});
+
+Ext.override(Ext.form.field.ComboBox, {
+    // VROPS
+    forceSelection : true,
+    // VROPS
+    valueNotFoundText : bundle['main.combo.valueNotFound'],
+    expand : function(field, eOpts) {
+        // VROPS
+        if (this.fireEvent('beforeexpand', field)) {
+            return this.callParent(arguments);
+        }
+    },
+    initComponent : function() {
+        var result =  this.callParent(arguments);
+        if (!this.forceSelection) {
+            this.on("blur", function() {
+                var record = this.getStore() && this.getStore().findRecord(this.displayField, this.getRawValue(), 0, false, true/*caseSensitive*/, true);
+                if (record) {
+                    this.select(record);
+                } else if(this.getRawValue() == "") {
+                    this.setValue(this.getRawValue());
+                }
+            });
+        }
+        return result;
+    },
+    doLocalQuery: function(queryPlan) {
+        var me = this,
+            queryString = queryPlan.query,
+            store = me.getStore(),
+            value = queryString,
+            filter;
+        me.clearLocalFilter();
+        // Querying by a string...
+        // VROPS
+        if (queryString || queryString == '') {
+            // User can be typing a regex in here, if it's invalid
+            // just swallow the exception and move on
+            if (me.enableRegEx) {
+                try {
+                    value = new RegExp(value);
+                } catch (e) {
+                    value = null;
+                }
+            }
+            if (value !== null) {
+                // Must set changingFilters flag for this.checkValueOnChange.
+                // the suppressEvents flag does not affect the filterchange event
+                me.changingFilters = true;
+                filter = me.queryFilter = new Ext.util.Filter({
+                    id: me.id + '-filter',
+                    anyMatch: me.anyMatch,
+                    caseSensitive: me.caseSensitive,
+                    root: 'data',
+                    property: me.displayField,
+                    value: value
+                });
+                store.addFilter(filter, true);
+                me.changingFilters = false;
+            }
+        }
+        // Expand after adjusting the filter if there are records or if emptyText is configured.
+        if (me.store.getCount() || me.getPicker().emptyText) {
+            // The filter changing was done with events suppressed, so
+            // refresh the picker DOM while hidden and it will layout on show.
+            me.getPicker().refresh();
+            me.expand();
+        } else {
+            me.collapse();
+        }
+        me.afterQuery(queryPlan);
+    }
+});
+
+Ext.override(Ext.form.RadioManager, {
+    //Newly added function
+    getWithDifferentValue: function(name, value, formId) {
+        return this.filterBy(function(item) {
+            return item.name === name && item.inputValue != value &&
+            item.getFormId() == formId;
+        });
+    },
+
+    getWithValue: function(name, value, formId) {
+        return this.filterBy(function(item) {
+            return item.name === name && item.inputValue == value &&
+                   item.getFormId() == formId;//VROPS was item.getFormId() === formId
+        });
+    }
+});
+
+/**
+ * Overridden for:
+ * 1) Be able to specify a sortIndex parameter which can be different from dataIndex.
+ * 2) A fix in grid state save logic to enforce saving 'hidden' property of a column in the state (for bug#1356375).
+ * 3) Automatically HTML encode the text being shown in grid cells.
+ */
+Ext.override(Ext.grid.column.Column, {
+    /**
+     * @cfg {Boolean} cellTip
+     * True to set tip on grid cell
+     */
+    cellTip : false,
+    getSortParam: function() {
+        // VROPS start
+        var result = this.sortIndex ? this.sortIndex : this.dataIndex;
+        if (Ext.isNumber(result)) {
+            result = result.toString();
+        }
+        // VROPS end
+        return result;
+    },
+    savePropToState: function(propName, state, stateName) {
+        var me = this,
+            value = me[propName],
+            config = me.initialConfig;
+        // VROPS
+        var hiddenAttrOfGridColumn = me.xtype === 'gridcolumn' && propName === 'hidden';
+        if (me.hasOwnProperty(propName)) {
+            if (!config || config[propName] !== value || hiddenAttrOfGridColumn) {
+                if (state) {
+                    state[stateName || propName] = value;
+                }
+                return true;
+            }
+        }
+        return false;
+    },
+    constructor : function(config) {
+        // VROPS start
+        if (!this.defaultRenderer && !config.defaultRenderer) {
+            this.renderer = function(value, metaData, record, rowIndex, colIndex, store, view) {
+                if (value == null) {
+                    return '';
+                }
+                return (store.encodeHTMLValue != null && store.encodeHTMLValue == false) ? value : htmlEncode(value);
+            }
+        }
+        // VROPS end
+        return this.callParent(arguments);
+    }
+});
+
+// Be able to pass some extra information during the sort operation.
+Ext.override(Ext.data.Store, {
+    sort : function() {
+        // VROPS start
+        var args = Array.prototype.slice.call(arguments);
+        if (args != null && args.length > 0) {
+            var params = args[0];
+            if (params && params.hasOwnProperty('property') && params.hasOwnProperty('type')) {
+                args[0] = params.property + '_::_' + params.type;
+            }
+        }
+        this.fireEvent('beginsort', args);
+        // VROPS end
+        this.callParent(args);
+    },
+    reloadPage : function() {
+        var me = this;
+        var loadFn = function(store, records , successful , eOpts) {
+            if (me.count() == 0) {
+                me.loadPage(1);
+            }
+        }
+        me.on('load', loadFn, this, { single : true });
+        me.reload();
+    }
+});
+
+// Set all actionMethods of AJAX requests to POST by default.
+Ext.override(Ext.data.proxy.Ajax, {
+    constructor : function(config) {
+        var actionMethods = {
+            create  : 'POST',
+            read    : 'POST',
+            update  : 'POST',
+            destroy : 'POST'
+        };
+        this.config.actionMethods = actionMethods;
+        this.callParent(arguments);
+    },
+    timeout : 300000
+});
+
+// Enable overflow for all toolbars by default.
+Ext.override(Ext.toolbar.Toolbar, {
+    enableOverflow : true,
+    overflowHandler: 'scroller',
+    initComponent : function() {
+        this.on('afterrender', function() {
+            var prevItem = null;
+            var tbarItems = this.items;
+            for (var i = 0; i < tbarItems.length; i++) {
+                var item = tbarItems.items[i];
+                if (item.isVisible()) {
+                    if (item.xtype == 'tbseparator' && (prevItem == null || prevItem.xtype == 'tbseparator')) {
+                        item.setVisible(false);
+                    }
+                    prevItem = item;
+                }
+            }
+            if (prevItem && prevItem.xtype == 'tbseparator') {
+                prevItem.setVisible(false);
+            }
+        });
+        this.callParent(arguments);
+    }
+});
+
+Ext.override(Ext.panel.Tool, {
+    initComponent : function() {
+        this.on('afterrender', function() {
+            if (this.type == 'help') {
+                this.setVisible(showHelpLink);
+            }
+        });
+        this.callParent(arguments);
+    }
+});
+
+// Set some preconditions for all message boxes.
+Ext.override(Ext.window.MessageBox, {
+    resizable  : true,
+    maxWidth   : 1000,
+    maxHeight  : 600
+});
+
+// Set some preconditions for all windows.
+Ext.override(Ext.window.Window, {
+    closeToolText: bundle['main.close'],
+    statics: {
+        applyBodyScroll_ : function(window_) {
+            if (window_.modal) {
+                var body = Ext.getBody();
+                var viewSize = body.getViewSize();
+                var bodyWidth = viewSize.width;
+                var bodyHeight = viewSize.height;
+                var windowWidth = window_.getWidth();
+                var windowHeight = window_.getHeight();
+                if (windowHeight > bodyHeight || windowWidth > bodyWidth) {
+                    body.applyStyles({position: 'relative', maxHeight: '0px', overflowX: 'auto', overflowY: 'auto'});
+                } else {
+                    Ext.window.Window.resetBodyScroll_(window_);
+                }
+            }
+        },
+        resetBodyScroll_ : function(window_) {
+            if (window_.modal) {
+                document.body.style.removeProperty('maxHeight');
+                Ext.getBody().applyStyles({position: 'static', overflowX: 'hidden', overflowY: 'hidden'});
+            }
+        }
+    },
+    initComponent : function() {
+        this.on('beforeshow', this.onBeforeWindowShow);
+        this.on('show', this.onWindowShow_);
+        this.on('close', this.onWindowClose_);
+        this.on('resize', this.onWindowResize_);
+        return this.callParent(arguments);
+    },
+    onBeforeWindowShow : function(window_, eOpts) {
+        if (!window_.minWidth) {
+            window_.minWidth = window_.width;
+        }
+        if (!window_.minHeight) {
+            window_.minHeight = window_.height;
+        }
+        window_.constrain = true;
+        return true;
+    },
+    onWindowShow_ : function(window_, eOpts) {
+        Ext.window.Window.applyBodyScroll_(window_);
+    },
+    onWindowClose_ : function(window_, eOpts) {
+        var activeWindow = Ext.WindowManager.getActive();
+        if (activeWindow && activeWindow.isVisible()) {
+            Ext.window.Window.applyBodyScroll_(activeWindow);
+            return;
+        }
+        Ext.window.Window.resetBodyScroll_(window_);
+    },
+    onWindowResize_ : function(window_, width , height , eOpts) {
+        Ext.window.Window.applyBodyScroll_(window_);
+    }
+});
+
+Ext.override(Ext.tree.View, {
+    onCheckChange : function(record) {
+        // VROPS
+        if (this.fireEvent('beforecheckchange', record)) {
+            return this.callParent(arguments);
+        }
+    }
+});
+
+Ext.override(Ext.menu.Item, {
+    onClick: function(e) {
+        var me = this,
+            clickHideDelay = me.clickHideDelay,
+            browserEvent = e.browserEvent,
+            clickResult, preventDefault;
+        if (!me.href || me.disabled) {
+            e.stopEvent();
+            if (me.disabled) {
+                return false;
+            }
+        }
+        if (me.disabled || me.handlingClick) {
+            return;
+        }
+        if (me.hideOnClick && !me.menu) {
+            // on mobile webkit, when the menu item has an href, a longpress will
+            // trigger the touch call-out menu to show.  If this is the case, the tap
+            // event object's browser event type will be 'touchcancel', and we do not
+            // want to hide the menu.
+            // items with submenus are activated by touchstart on mobile browsers, so
+            // we cannot hide the menu on "tap"
+            if (!clickHideDelay) {
+                me.deferHideParentMenus();
+            } else {
+                me.deferHideParentMenusTimer = Ext.defer(me.deferHideParentMenus, clickHideDelay, me);
+            }
+        }
+        // Click event may have destroyed the menu, don't do anything further
+        clickResult = me.fireEvent('click', me, e);
+        // Click listener could have destroyed the menu and/or item.
+        if (me.destroyed) {
+            return;
+        }
+        if (clickResult !== false && me.handler) {
+            // VROPS
+            if (me.fireEvent('beforeclick', me, e) !== false) {
+                Ext.callback(me.handler, me.scope, [
+                    me,
+                    e
+                ], 0, me);
+            }
+        }
+        // And the handler could have done the same. We check this twice
+        // because if the menu was destroyed in the click listener, the handler
+        // should not have been called.
+        if (me.destroyed) {
+            return;
+        }
+        // If there's an href, invoke dom.click() after we've fired the click event in case a click
+        // listener wants to handle it.
+        //
+        // Note that we're having to do this because the key navigation code will blindly call stopEvent()
+        // on all key events that it handles!
+        //
+        // But, we need to check the browser event object that was passed to the listeners to determine if
+        // the default action has been prevented.  If so, we don't want to honor the .href config.
+        if (Ext.isIE9m) {
+            // Here we need to invert the value since it's meaning is the opposite of defaultPrevented.
+            preventDefault = browserEvent.returnValue === false ? true : false;
+        } else {
+            preventDefault = !!browserEvent.defaultPrevented;
+        }
+        // We only manually need to trigger the click event if it's come from a key event.
+        if (me.href && e.type !== 'click' && !preventDefault) {
+            me.handlingClick = true;
+            me.itemEl.dom.click();
+            me.handlingClick = false;
+        }
+        if (!me.hideOnClick && !me.hasFocus) {
+            me.focus();
+        }
+        return clickResult;
+    },
+    beforeRender: function() {
+        var result = this.callParent();
+        // VROPS
+        this.renderData.href = this.renderData.href == "#" ? "javascript:void(0)" : this.renderData.href;
+        return result;
+    }
+});
+
+Ext.override(Ext.button.Button, {
+    initComponent : function() {
+        // VROPS
+        this.on('click', this.handleClick);
+        return this.callParent(arguments);
+    },
+    handleClick : function(cmp, e, eOpts) {
+        var hasRight = (!cmp.privilege || hasPrivileges(cmp.privilege));
+        if (!hasRight) {
+            e.stopPropagation();
+            showPrivilegeInfoMsg(cmp.privilege);
+        }
+        if (cmp.enableToggle) {
+            loseFocus(cmp);
+        }
+        return hasRight;
+    }
+});
+
+Ext.override(Ext.menu.Item, {
+    initComponent : function() {
+        this.on('beforeclick', this.handleClick);
+        return this.callParent(arguments);
+    },
+    handleClick : function(cmp, e, eOpts) {
+        var hasRight = (!cmp.privilege || hasPrivileges(cmp.privilege));
+        if (!hasRight) {
+            showPrivilegeInfoMsg(cmp.privilege);
+        }
+        return hasRight;
+    }
+});
+
+Ext.override(Ext.form.field.Base, {
+    // VROPS
+    labelSeparator : bundle["main.labelSeparator"],
+    // VROPS
+    fieldRendered : function(cmp) {
+        if (cmp.getEl() && cmp.getEl().dom) {
+            var width = cmp.getEl().dom.style.width;
+            if (width != null && width != '') {
+                // TODO last argument is obsolete
+                var formElements = Ext.query('div[class*=x-form-text-field-body-default]', null, cmp.getEl().dom);
+                if (formElements != null && formElements.length > 0) {
+                    var formElement = formElements[0];
+                    formElement.className += ' form-text-field-body-inherit';
+                }
+            }
+        }
+    },
+    initComponent : function() {
+        this.on('afterrender', this.fieldRendered);
+        this.callParent(arguments);
+    },
+    setError: function(error) {
+        var me = this,
+            msgTarget = me.msgTarget,
+            prop;
+        if (me.rendered) {
+            if (msgTarget === 'title' || msgTarget === 'qtip' || msgTarget === 'side') {
+                prop = msgTarget === 'qtip'  || msgTarget === 'side' ? 'data-errorqtip' : 'title';
+                // VROPS
+                me.getActionEl().up().dom.setAttribute(prop, error || '');
+            } else {
+                me.updateLayout();
+            }
+        }
+    }
+});
+
+Ext.override(Ext.form.FieldContainer, {
+    // VROPS
+    labelSeparator : bundle["main.labelSeparator"]
+});
+
+Ext.override(Ext.tree.ViewDragZone, {
+    getDragText: function() {
+        var records = this.dragData.records,
+            count = records.length,
+            text = records[0].get(this.displayField),
+            suffix = 's',
+            formatRe = /\{\d+\}/,
+            dragText = this.dragText;
+        if (formatRe.test(dragText) && count === 1 && text) {
+            return text;
+        } else if (!text) {
+            suffix = '';
+        }
+        // VROPS
+        return Ext.String.format((count == 1 ? bundle["extjs.tree.DragZone.dragTextSingular"] : bundle["extjs.tree.DragZone.dragTextPlural"]), count);
+    }
+});
+
+Ext.override(Ext.view.DragZone, {
+    getDragText: function() {
+        var count = this.dragData.records.length;
+        // VROPS
+        return Ext.String.format((count == 1 ? bundle["extjs.view.DragZone.dragTextSingular"] : bundle["extjs.view.DragZone.dragTextPlural"]), count);
+    }
+});
+
+Ext.override(Ext.Component, {
+    /**
+     * @property {String} featureId if set, then on `afterRender` the component's DOM element's HTML data attribute
+     * `data-feature-id` will be set equal to `featureId`.
+     *
+     * @public
+     * @memberOf Ext.Component
+     */
+
+    initComponent : function() {
+        if (this.docCenterKey && !showHelpLink) {
+            this.docCenterKey = null;
+        }
+        if (this.videoKey && !showHelpVideo) {
+            this.videoKey = null;
+        }
+        this.on('destroy', this.handleComponentDestroy, this, {priority: -100000});
+        this.on('afterrender', this.handleAfterRender);
+
+        return this.callParent(arguments);
+    },
+    handleComponentDestroy : function(cmp, eOpts) {
+        var className = Ext.ClassManager.getName(cmp);
+
+        if (className != null && className.indexOf('Ext.vcops') == 0) {
+            // console.log(className);
+            var internalKeys = this.getExtInternalKeys();
+            for (var key in cmp) {
+                if (cmp.hasOwnProperty(key)) {
+                    var v = cmp[key];
+                    if (v != null && !v.destroyed && !v.isDestroyed && !v.destroyed_ && !v.destroying && (!v.owner || !v.owner.destroying) && v != cmp && !internalKeys.hasOwnProperty(key)
+                        && (!cmp.initialConfig || !cmp.initialConfig.hasOwnProperty(key)) && (!cmp.config || !cmp.config.hasOwnProperty(key)) && (!cmp.contains || !cmp.items || !cmp.contains(v, true))) {
+                        var className_ = Ext.ClassManager.getName(v);
+                        if (className_ != null && className_.indexOf('Ext.') == 0) {
+                            v.destroyed_ = true;
+                            // console.log('key = ' + key + ', v = ' + v + ', className = ' + className_);
+                            Ext.destroy(v);
+                        }
+                    }
+                }
+            }
+        }
+    },
+    getExtInternalKeys : function() {
+        if (!window.extInternalKeys) {
+            var internalKeysFixed = ['scope', 'el', 'bodyEl', 'container', 'btnInnerEl', 'btnWrap', 'btnEl', 'btnIconEl', 'protoEl', 'separator', 'constrainTo',
+                'ownerFocusableContainer', 'stateTask', 'owner', 'ownerCt', 'body', 'bodyWrap', 'customRangesPanel1', 'customRangesPanel2', 'customRangesPanel3', 'customRangesPanel4',
+                'selectedResource', 'column', 'workspaceProvider', '_resource', 'measurer', '$widgetColumn', 'zIndexParent'
+            ];
+            var internalKeysArray = Ext.Array.merge(
+                Object.keys(Ext.Component.prototype), Object.keys(Ext.container.Container.prototype), Object.keys(Ext.panel.Panel.prototype),
+                Object.keys(Ext.view.Table.prototype), Object.keys(Ext.panel.Table.prototype), Object.keys(Ext.grid.Panel.prototype),
+                Object.keys(Ext.form.FieldContainer.prototype), Object.keys(Ext.form.CheckboxGroup.prototype), Object.keys(Ext.form.RadioGroup.prototype),
+                Object.keys(Ext.form.field.Base.prototype), Object.keys(Ext.form.field.Checkbox.prototype), Object.keys(Ext.form.field.Radio.prototype)
+            );
+            var internalKeysObject = {};
+            var i = 0;
+            for (i = 0; i < internalKeysArray.length; i++) {
+                internalKeysObject[internalKeysArray[i]] = i;
+            }
+            for (var j = 0; j < internalKeysFixed.length; j++) {
+                if (!internalKeysObject.hasOwnProperty(internalKeysFixed[j])) {
+                    internalKeysObject[internalKeysFixed[j]] = i;
+                    i++;
+                }
+            }
+            window.extInternalKeys = internalKeysObject;
+        }
+        return window.extInternalKeys;
+    },
+    handleAfterRender : function(cmp, eOpts) {
+        var hasRight = (!cmp.privilege || hasPrivileges(cmp.privilege));
+        if (!hasRight && cmp.privilegeHide) {
+            cmp.hide();
+        }
+
+        /**
+         * Sets the `data-feature-id` HTML attribute on the component when the property `featureId` is set
+         */
+        if(Ext.isDefined(this.featureId)) {
+            this.el.dom.dataset.featureId = this.featureId;
+        }
+    },
+    isMasked: function(deep) {
+        var me = this;
+        return !!(me.masked || (me.loadMask && Ext.isFunction(me.loadMask.isVisible) && me.loadMask.isVisible()) || (deep && me.getInherited().masked));
+    },
+    update: function(htmlOrData, loadScripts, callback, scriptScope) {
+        var me = this,
+            isData = (me.tpl && !Ext.isString(htmlOrData)),
+            container = me.ownerFocusableContainer,
+            sizeModel, doLayout, el;
+        if (isData) {
+            me.data = (htmlOrData && htmlOrData.isEntity) ? htmlOrData.getData(true) : htmlOrData;
+        } else {
+            me.html = Ext.isObject(htmlOrData) ? Ext.DomHelper.markup(htmlOrData) : htmlOrData;
+        }
+        if (me.rendered) {
+            sizeModel = me.getSizeModel();
+            doLayout = sizeModel.width.shrinkWrap || sizeModel.height.shrinkWrap;
+            if (me.isContainer) {
+                el = me.layout.getRenderTarget();
+                // If we are a non-empty container being updated with raw content we have to lay out
+                doLayout = doLayout || me.items.items.length > 0;
+            } else {
+                el = me.getTargetEl();
+            }
+            if (isData) {
+                me.tpl[me.tplWriteMode](el, me.data || {});
+            } else {
+                el.setHtml(me.html, loadScripts, callback, scriptScope || me);
+            }
+            if (doLayout) {
+                me.updateLayout();
+            }
+            if (container && !container.onFocusableChildUpdate.$nullFn) {
+                container.onFocusableChildUpdate(me);
+            }
+        } else {
+            // VROPS
+            me.text = me.html;
+        }
+    }
+});
+
+Ext.override(Ext.layout.container.boxOverflow.Menu, {
+    addComponentToMenu: function(menu, component) {
+        if (component.itemId == 'displayItem') {
+            component.text = component.html;
+            component.overflowClone = undefined;
+        }
+        this.callParent(arguments);
+    }
+});
+
+Ext.override(Ext.dd.DragDropManager, {
+    getLocation: function(oDD) {
+        if (!this.isTypeOfDD(oDD)) {
+            return null;
+        }
+        //delegate getLocation method to the
+        //drag and drop target.
+        if (oDD.getRegion) {
+            return oDD.getRegion();
+        }
+        var el = oDD.getEl(),
+            pos, x1, x2, y1, y2, t, r, b, l;
+        try {
+            pos = Ext.fly(el).getXY();
+        } catch (e) {}
+        if (!pos) {
+            return null;
+        }
+        x1 = pos[0];
+        // VROPS
+        x2 = x1 + (el ? el.offsetWidth : 0);
+        y1 = pos[1];
+        // VROPS
+        y2 = y1 + (el ? el.offsetHeight : 0);
+        t = y1 - oDD.padding[0];
+        r = x2 + oDD.padding[1];
+        b = y2 + oDD.padding[2];
+        l = x1 - oDD.padding[3];
+        return new Ext.util.Region(t, r, b, l);
+    }
+});
+
+Ext.override(Ext.Component, {
+    addEvents : function(events) {
+        return;
+    }
+});
+
+Ext.override(Ext.data.reader.Reader, {
+    constructor : function(config) {
+        if (config && config.hasOwnProperty('root')) {
+            config = Ext.apply({}, config);
+            config.rootProperty = config.root;
+            delete config.root;
+        }
+        this.callParent(arguments);
+    }
+});
+
+Ext.override(Ext.container.Container, {
+    initComponent : function() {
+        if (this.autoScroll === true) {
+            this.setScrollable(true);
+        }
+        this.callParent(arguments);
+    }
+});
+
+// Some more functions added to SortTypes
+Ext.apply(Ext.data.SortTypes, {
+    // return lowercase of the string
+    asLCString : function(s) {
+        return String(s).toLowerCase();
+    },
+    // sorts view/subjects using their localized names
+    subjectsArrayAsLCString : function(a) {
+        if (Ext.isEmpty(a)) {
+            return null;
+        }
+        return a[0].localizedValue.toLowerCase();
+    },
+    custom : function(person) {
+        return String(person).toUpperCase();
+    }
+});
+
+Ext.override(Ext.grid.Panel, {
+    // VROPS, enable text selection in grids by default
+    viewConfig : {
+        enableTextSelection: true
+    },
+    /**
+     * @cfg {Boolean} enableGridTooltip
+     * True to enable cellTips and/or column's cellTip functionality
+     * @memberOf Ext.grid.Panel
+     */
+    enableGridTooltip : false,
+    /**
+     * @cfg {Boolean} cellTips
+     * True to set tip on all grid cells,
+     * enableGridTooltip must be true
+     * @memberOf Ext.grid.Panel
+     */
+    cellTips : false,
+    /**
+     * Keeps the instance of Ext.tip.ToolTip for this grid
+     * @private
+     * @memberOf Ext.grid.Panel
+     */
+    gridTooltip : null,
+    /**
+     * Instantiate this.gridTooltip with instance of Ext.tip.ToolTip
+     * @private
+     * @see enableGridTooltip
+     * @see cellTips
+     * @see gridTooltip
+     * @memberOf Ext.grid.Panel
+     */
+    constructGridTooltip : function() {
+        var me = this;
+        var gridView = me.getView();
+        me.gridTooltip = Ext.create('Ext.tip.ToolTip', {
+            renderTo : Ext.getBody(),
+            maxWidth: 1000,
+            target : gridView.getEl(),
+            delegate : gridView.getCellSelector(),
+            trackMouse : true,
+            listeners : {
+                beforeshow : function updateTipBody(tip) {
+                    var cell = tip.triggerElement;
+                    if (!cell) {
+                        return false;
+                    }
+                    var text = Ext.isGecko ? cell.innerHTML : cell.innerText;
+                    if (me.headerCt != null && text.trim()) {
+                        var column = me.headerCt.getVisibleGridColumns()[cell.cellIndex];
+                        if (me.cellTips || (column && column.cellTip)) {
+                            tip.update(DOMPurify.sanitize(cell.innerHTML, { ALLOWED_TAGS: ['b', 'br']}));
+                        } else {
+                            return false;
+                        }
+                    } else {
+                        return false;
+                    }
+                }
+            }
+        });
+    },
+    getCopyAllowedColumns : function() {
+        return this.getVisibleColumnManager().columns.filter(function(column) {
+            return column.allowCopy
+        });
+    },
+    copyText : function(textToCopy) {
+        if (document.queryCommandSupported('copy')) {
+            var textArea = document.createElement('textarea');
+            textArea.innerHTML = textToCopy;
+            textArea.style.position = 'absolute';
+            textArea.style.paddingLeft = '-100px';
+            textArea.style.top = '-100px';
+            document.body.appendChild(textArea);
+            textArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textArea);
+        }
+    },
+
+    addCopyContextMenu: function () {
+        this.contextMenu = Ext.create('Ext.menu.Menu', {
+            items: [ {
+                scope : this,
+                listeners : {
+                    scope : this,
+                    afterrender : function(item) {
+                        var me = this;
+                        item.el.dom.addEventListener('click', function() {
+                            var textToCopy = '';
+                            var selectedRows = me.getSelectionModel().getSelection();
+                            var copyEnabledColumns = me.getCopyAllowedColumns();
+                            for (var i = 0; i < selectedRows.length; i++) {
+                                for (var j = 0; j < copyEnabledColumns.length; j++) {
+                                    var cellValue = selectedRows[i].data[copyEnabledColumns[j].dataIndex] || '';
+                                    textToCopy += cellValue + '\t';
+                                }
+                                textToCopy += '\n'
+                            }
+                            me.copyText(textToCopy);
+                        });
+                    }
+                }
+            },{
+                scope : this,
+                listeners : {
+                    scope : this,
+                    afterrender : function(item) {
+                        var me = this;
+                        item.el.dom.addEventListener('click', function() {
+                            var textToCopy = '';
+                            var selectedRows = me.getSelectionModel().getSelection();
+                            for (var i = 0; i < selectedRows.length; i++) {
+                                var cellValue = selectedRows[i].data[me.targetElementDataIndex] || '';
+                                textToCopy += cellValue + '\n';
+                            }
+                            me.copyText(textToCopy);
+                        });
+                    }
+                }
+            }],
+            listeners : {
+                scope: this,
+                activate: function (menu, eOpts) {
+                    var copyRowText = this.getSelection().length > 1 ? bundle['main.copyRows'] : bundle['main.copyRow'];
+                    var copyCellText = this.getSelection().length > 1 ? bundle['main.copyCells'] : bundle['main.copyCell'];
+                    menu.items.items[0].setText(copyRowText);
+                    menu.items.items[1].setText(copyCellText);
+                }
+            }
+        });
+    },
+
+    onBeforeCellContextMenu: function (scope, td, cellIndex, record, tr, rowIndex, e, eOpts) {
+        // show custom context menu where required, if grid columns are not selectable (for ex. when drag-drop plugin is enabled)
+        if (td.classList.contains("x-unselectable")) {
+            e.preventDefault();
+            if (scope.panel.headerCt.getHeaderAtIndex(cellIndex).allowCopy) {
+                this.targetElementDataIndex = scope.panel.headerCt.getHeaderAtIndex(cellIndex).dataIndex;
+                if (!this.contextMenu) {
+                    this.addCopyContextMenu();
+                }
+                this.contextMenu.showAt(e.getXY());
+                return false;
+            }
+        }
+    },
+
+    onItemmouseup: function (view, record, item, index, e) {
+        var unselectable = Ext.baseCSSPrefix + 'unselectable';
+        if (view.hasCls(unselectable) && view.enableTextSelection) {
+            view.removeCls(unselectable);
+        }
+    },
+
+    onItemmousedown: function (view, record, item, index, e) {
+        var unselectable = Ext.baseCSSPrefix + 'unselectable';
+        if (e.shiftKey && !view.hasCls(unselectable)) {
+            view.addCls(unselectable);
+        }
+    },
+
+    initComponent : function() {
+        var result = this.callParent(arguments);
+        var gridColumns = this.columns;
+
+        if (this.enableGridTooltip) {
+            this.on('afterrender', this.constructGridTooltip);
+        }
+
+        //VROPS disable grid text selection when selecting multiple rows with 'Shift' key
+        this.on('itemmousedown', this.onItemmousedown);
+        this.on('itemmouseup', this.onItemmouseup);
+
+        this.on('beforecellcontextmenu', this.onBeforeCellContextMenu);
+
+        return result;
+    }
+});
+
+// Overridden to hide loading mask image if no message specified.
+Ext.override(Ext.dom.Element, {
+    mask: function(msg, msgCls) {
+        if ((msg == null || msg == "") && msgCls == null) {
+            return this.callParent('', 'x-hidden-display');
+        } else {
+            return this.callParent(arguments);
+        }
+    }
+});
+
+// When in store records count is 0, and there is no need to load store, pages count is 1, but should be 0
+Ext.override(Ext.toolbar.Paging, {
+
+    //VROPS Scroll bug fix, doRender and getParentGrid are defined in theme overrides
+    onLoad : function() {
+        var me = this,
+        result = me.callParent(arguments);
+        me.doRender();
+        var grid = me.getParentGrid();
+        if (grid) {
+            var view = grid.getView()
+            if (view.scrollTopOnLoad) {
+                view.scrollable.trackingScrollTop = 0;
+            }
+        }
+        return result;
+    },
+
+    getPagingItems: function() {
+        var me = this,
+        inputListeners = {
+            scope: me,
+            blur: me.onPagingBlur
+        };
+        inputListeners[Ext.supports.SpecialKeyDownRepeat ? 'keydown' : 'keypress'] = me.onPagingKeyDown;
+        // VROPS
+        var configObject = me.store.getConfig();
+        var pagesCount;
+
+        // getting right pages count
+        if (configObject) {
+            var pageSize = (configObject && (pageSize = configObject.pageSize) && pageSize > 0) ? pageSize : 25;//25 is default pageSize, which is in Ext.data.AbstractStore class
+            var storeCount = (storeCount = me.store.getCount() && storeCount > 0) ? storeCount : 0;
+            pagesCount = Math.ceil(storeCount / pageSize);
+        } else {
+            pagesCount = 0;
+        }
+        // VROPS
+        return [
+            {
+                itemId: 'first',
+                tooltip: me.firstText,
+                overflowText: me.firstText,
+                iconCls: Ext.baseCSSPrefix + 'tbar-page-first',
+                disabled: true,
+                handler: me.moveFirst,
+                scope: me
+            },
+            {
+                itemId: 'prev',
+                tooltip: me.prevText,
+                overflowText: me.prevText,
+                iconCls: Ext.baseCSSPrefix + 'tbar-page-prev',
+                disabled: true,
+                handler: me.movePrevious,
+                scope: me
+            },
+            '-',
+            me.beforePageText,
+            {
+                xtype: 'numberfield',
+                itemId: 'inputItem',
+                name: 'inputItem',
+                cls: Ext.baseCSSPrefix + 'tbar-page-number',
+                allowDecimals: false,
+                minValue: 1,
+                hideTrigger: true,
+                enableKeyEvents: true,
+                keyNavEnabled: false,
+                selectOnFocus: true,
+                submitValue: false,
+
+                isFormField: false,
+                width: me.inputItemWidth,
+                margin: '-1 2 3 2',
+                listeners: inputListeners
+            },
+            {
+                xtype: 'tbtext',
+                itemId: 'afterTextItem',
+                text: Ext.String.format(me.afterPageText, pagesCount)//VROPS
+            },
+            '-',
+            {
+                itemId: 'next',
+                tooltip: me.nextText,
+                overflowText: me.nextText,
+                iconCls: Ext.baseCSSPrefix + 'tbar-page-next',
+                disabled: true,
+                handler: me.moveNext,
+                scope: me
+            },
+            {
+                itemId: 'last',
+                tooltip: me.lastText,
+                overflowText: me.lastText,
+                iconCls: Ext.baseCSSPrefix + 'tbar-page-last',
+                disabled: true,
+                handler: me.moveLast,
+                scope: me
+            },
+            '-',
+            {
+                itemId: 'refresh',
+                tooltip: me.refreshText,
+                overflowText: me.refreshText,
+                iconCls: Ext.baseCSSPrefix + 'tbar-loading',
+                disabled: me.store.isLoading(),
+                handler: me.doRefresh,
+                scope: me
+            }
+        ];
+    }
+});
+
+// Increase the scrolling of Chiclets in CapacityRemaining Page
+Ext.define('Ext.override.layout.container.boxOverflow.Scroller', {
+    override : 'Ext.layout.container.boxOverflow.Scroller',
+    scrollLeft: function() {
+        var shift = this.layout.direction === 'vertical' ? this.layout.innerCt.getHeight() : this.layout.innerCt.getWidth();
+        shift = Math.max(shift - this.scrollIncrement, this.scrollIncrement);
+        this.scrollBy(-shift, false);
+    },
+    scrollRight: function() {
+        var shift = this.layout.direction === 'vertical' ? this.layout.innerCt.getHeight() : this.layout.innerCt.getWidth();
+        shift = Math.max(shift - this.scrollIncrement, this.scrollIncrement);
+        this.scrollBy(shift, false);
+    },
+    animateScroll: true
+});
+
+
+Ext.override(Ext.form.field.Text, {
+    // VROPS
+    onlyWhitespaceText: bundle['extjs.form.TextField.whitespaceNotAllowed'],
+
+    getErrors: function(value) {
+        value = arguments.length ? (value == null ? '' : value) : this.processRawValue(this.getRawValue());
+        var me = this,
+            errors = me.callSuper([//VROPS before was callParent
+                value
+            ]),
+            validator = me.validator,
+            vtype = me.vtype,
+            vtypes = Ext.form.field.VTypes,
+            regex = me.regex,
+            format = Ext.String.format,
+            msg, trimmed, isBlank;
+        if (Ext.isFunction(validator)) {
+            msg = validator.call(me, value);
+            if (msg !== true) {
+                errors.push(msg);
+            }
+        }
+        trimmed = me.allowOnlyWhitespace ? value : Ext.String.trim(value);
+        if (trimmed.length < 1) {
+            if (!me.allowBlank) {
+                if (value.length > 0 && (!me.valueContainsPlaceholder || value !== me.emptyText)) {//VROPS added
+                    errors.push(me.onlyWhitespaceText);//VROPS added
+                } else {//VROPS added
+                    errors.push(me.blankText);
+                }//VROPS added
+            }
+            // If we are not configured to validate blank values, there cannot be any additional errors
+            if (!me.validateBlank) {
+                return errors;
+            }
+            isBlank = true;
+        }
+        // If a blank value has been allowed through, then exempt it from the minLength check.
+        // It must be allowed to hit the vtype validation.
+        if (!isBlank && value.length < me.minLength) {
+            errors.push(format(me.minLengthText, me.minLength));
+        }
+        if (value.length > me.maxLength) {
+            errors.push(format(me.maxLengthText, me.maxLength));
+        }
+        if (vtype) {
+            if (!vtypes[vtype](value, me)) {
+                errors.push(me.vtypeText || vtypes[vtype + 'Text']);
+            }
+        }
+        if (regex && !regex.test(value)) {
+            errors.push(me.regexText || me.invalidText);
+        }
+        return errors;
+    }
+});
+
+Ext.override(Ext.panel.Panel, {
+    // VROPS overriding hardcoded texts
+    collapseToolText: bundle['main.collapse'],
+    expandToolText: bundle['main.expand'],
+
+    getPinnedItems: function(items) {
+        var pinnedItems = [];
+        if (items != null) {
+            for (var i = 0; i < items.length; i++) {
+                var item = items[i];
+                if (item.pin === true) {
+                    pinnedItems.push(item);
+                    Ext.Array.removeAt(items, i, 1);
+                    i--;
+                }
+            }
+        }
+        return pinnedItems;
+    },
+    bridgeToolbars: function() {
+        var me = this,
+            docked = [],
+            minButtonWidth = me.minButtonWidth,
+            fbar, fbarDefaults, fbarIsButtons;
+        function initToolbar(toolbar, pos, useButtonAlign, disableFocusableContainer) {
+            if (Ext.isArray(toolbar)) {
+                toolbar = {
+                    xtype: 'toolbar',
+                    items: toolbar
+                };
+            } else if (!toolbar.isComponent) {
+                // Incoming toolbar config can be a property on the prototype
+                toolbar = Ext.apply({}, toolbar);
+            }
+            if (!toolbar.xtype) {
+                toolbar.xtype = 'toolbar';
+            }
+            toolbar.dock = pos;
+            if (disableFocusableContainer) {
+                toolbar.focusableContainer = false;
+            }
+            // Legacy support for buttonAlign (only used by buttons/fbar)
+            if (useButtonAlign) {
+                toolbar.layout = Ext.apply({
+                    // default to 'end' (right-aligned) if me.buttonAlign is undefined or invalid
+                    pack: {
+                        left: 'start',
+                        center: 'center'
+                    }[me.buttonAlign] || 'end'
+                }, toolbar.layout);
+            }
+            return toolbar;
+        }
+        if (me.tbar) {
+            // VROPS
+            var tbar = initToolbar(me.tbar, 'top');
+            var tbarItems = tbar.isComponent && tbar.items ? tbar.items.items : tbar.items;
+            var pinnedItems = me.getPinnedItems(tbarItems);
+            if (!Ext.isEmpty(pinnedItems)) {
+                pinnedItems[0].setStyle({"padding-left": "6px"});
+                tbar.flex = 1;
+                tbar.border = false;
+                docked.push({
+                    layout: {
+                        type: 'hbox',
+                        align: 'middle'
+                    },
+                    border: false,
+                    items: [tbar].concat(pinnedItems)
+                });
+            } else {
+                docked.push(tbar);
+            }
+            me.tbar = null;
+        }
+        if (me.bbar) {
+            docked.push(initToolbar(me.bbar, 'bottom'));
+            me.bbar = null;
+        }
+        if (me.buttons) {
+            me.fbar = me.buttons;
+            me.buttons = null;
+            fbarIsButtons = true;
+        }
+        if (me.fbar) {
+            fbar = initToolbar(me.fbar, 'bottom', true, fbarIsButtons);
+            // only we useButtonAlign
+            fbar.ui = 'footer';
+            // Apply the minButtonWidth config to buttons in the toolbar
+            if (minButtonWidth) {
+                fbarDefaults = fbar.defaults;
+                fbar.defaults = function(config) {
+                    var defaults = fbarDefaults || {},
+                        // no xtype or a button instance
+                        isButton = !config.xtype || config.isButton,
+                        cls;
+                    // Here we have an object config with an xtype, check if it's a button
+                    // or a button subclass
+                    if (!isButton) {
+                        cls = Ext.ClassManager.getByAlias('widget.' + config.xtype);
+                        if (cls) {
+                            isButton = cls.prototype.isButton;
+                        }
+                    }
+                    if (isButton && !('minWidth' in defaults)) {
+                        defaults = Ext.apply({
+                            minWidth: minButtonWidth
+                        }, defaults);
+                    }
+                    return defaults;
+                };
+            }
+            docked.push(fbar);
+            me.fbar = null;
+        }
+        if (me.lbar) {
+            docked.push(initToolbar(me.lbar, 'left'));
+            me.lbar = null;
+        }
+        if (me.rbar) {
+            docked.push(initToolbar(me.rbar, 'right'));
+            me.rbar = null;
+        }
+        if (me.dockedItems) {
+            if (me.dockedItems.isMixedCollection) {
+                me.addDocked(docked);
+            } else {
+                if (!Ext.isArray(me.dockedItems)) {
+                    me.dockedItems = [
+                        me.dockedItems
+                    ];
+                }
+                me.dockedItems = me.dockedItems.concat(docked);
+            }
+        } else {
+            me.dockedItems = docked;
+        }
+    }
+});
+
+Ext.override(Ext.tab.Panel, {
+    tabClickNavigation: true,//VROPS set to false, if you need to disable navigation with tab clicks
+
+    //VROPS start
+    disableNotActiveTabs: function() {
+        var activeTab = this.getActiveTab();
+        var index = this.items.indexOf(activeTab);
+        var items = this.items.items;
+        for (var i = 0; i < items.length; i++) {
+            items[i].setDisabled(index !== i);
+        }
+    },
+
+    enableAllTabs: function() {
+        var items = this.items.items;
+        for (var i = 0; i < items.length; i++) {
+            items[i].setDisabled(false);
+        }
+    },
+
+    setActiveTab: function() {
+        if (this.tabClickNavigation === false) {
+            this.enableAllTabs();
+        }
+        var result = this.callParent(arguments);
+        if (this.tabClickNavigation === false) {
+            this.disableNotActiveTabs();
+        }
+        return result;
+    },
+
+    initComponent: function() {
+        if (this.tabClickNavigation === false) {
+            this.on('boxready', this.disableNotActiveTabs, this);
+        }
+        return this.callParent(arguments);
+    }
+    //VROPS end
+});
+
+Ext.override(Ext.picker.Color, {
+    renderTpl: [
+        '<tpl for="colors">',
+        '<a href="javascript:void(0)" role="button" class="color-{.} {parent.itemCls}" hidefocus="on">',
+        '<span class="{parent.itemCls}-inner" style="background:#{.}">&#160;</span>',
+        '</a>',
+        '</tpl>'
+    ]
+});
+
+Ext.override(Ext.menu.Menu, {
+    constructor: function() {
+        var ret = this.callParent(arguments);
+        this.on('show', function(cmp) {
+            addHideableItem(cmp);
+        });
+        this.on('hide', function(cmp) {
+            removeHideableItem(cmp);
+        });
+        this.on('beforedestroy', function(cmp) {
+            removeHideableItem(cmp);
+        });
+        return ret;
+    }
+});
+
+Ext.override(Ext.data.TreeStore, {
+    getTotalCount: function() {
+        var count = this.callParent();
+        if (this.isTreeStorePaginated) {
+            if (this.getProxy()) {
+                var reader = this.getProxy().getReader();
+                if (reader && reader.getKeepRawData() && reader.rawData) {
+                    var totalProperty = reader.getTotalProperty();
+                    count = reader.rawData[totalProperty];
+                }
+            }
+        }
+        return count;
+    }
+});
+
+Ext.override(Ext.grid.column.Widget, {
+    privates: {
+        onItemAdd: function(records) {
+            var me = this,
+                view = me.getView(),
+                hasAttach = !!me.onWidgetAttach,
+                dataIndex = me.dataIndex,
+                isFixedSize = me.isFixedSize,
+                len = records.length,
+                i, record, cell, widget, el, focusEl, width;
+            // Loop through all records added, ensuring that our corresponding cell in each item
+            // has a Widget of the correct type in it, and is updated with the correct value from the record.
+            if (me.isVisible(true)) {
+                for (i = 0; i < len; i++) {
+                    record = records[i];
+                    if (record.isNonData) {
+
+                        continue;
+                    }
+                    cell = view.getCell(record, me);
+                    // May be a placeholder with no data row
+                    if (cell) {
+                        cell = cell.firstChild;
+                        if (!isFixedSize && !width && me.lastBox) {
+                            width = me.lastBox.width - parseInt(me.getCachedStyle(cell, 'padding-left'), 10) - parseInt(me.getCachedStyle(cell, 'padding-right'), 10);
+                        }
+                        widget = me.getWidget(record);
+                        widget.$widgetColumn = me;
+                        widget.$widgetRecord = record;
+                        // Render/move a widget into the new row
+                        Ext.fly(cell).empty();
+                        // Call the appropriate setter with this column's data field
+                        if (widget.bind && widget.bind.hasOwnProperty('record')) {//VROPS
+                            widget.setConfig('record', record);//VROPS
+                        }//VROPS
+                        if (widget.defaultBindProperty && dataIndex) {
+                            widget.setConfig(widget.defaultBindProperty, record.get(dataIndex));
+                        }
+                        el = widget.el || widget.element;
+                        if (el) {
+                            cell.appendChild(el.dom);
+                            if (!isFixedSize) {
+                                widget.setWidth(width);
+                            }
+                            widget.reattachToBody();
+                        } else {
+                            if (!isFixedSize) {
+                                // Must have a width so that the initial layout works
+                                widget.width = width || 100;
+                            }
+                            widget.render(cell);
+                        }
+                        // We have to run the callback *after* reattaching the Widget
+                        // back to the document body. Otherwise widget's layout may fail
+                        // because there are no dimensions to measure when the callback is fired!
+                        if (hasAttach) {
+                            Ext.callback(me.onWidgetAttach, me.scope, [
+                                me,
+                                widget,
+                                record
+                            ], 0, me);
+                        }
+                        // If the widget has a focusEl, ensure that its tabbability status is synched
+                        // with the view's navigable/actionable state.
+                        focusEl = widget.getFocusEl();
+                        if (focusEl) {
+                            if (view.actionableMode) {
+                                if (!focusEl.isTabbable()) {
+                                    focusEl.restoreTabbableState();
+                                }
+                            } else {
+                                if (focusEl.isTabbable()) {
+                                    focusEl.saveTabbableState();
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                view.refreshNeeded = true;
+            }
+        }
+    }
+});
+Ext.override(Ext.grid.column.Action, {
+    defaultRenderer: function(v, cellValues, record, rowIdx, colIdx, store, view) {
+        var me = this,
+            scope = me.origScope || me,
+            items = me.items,
+            len = items.length,
+            i, item, ret, disabled, tooltip, altText, icon, glyph, tabIndex, ariaRole, clrIcon;
+
+        // Allow a configured renderer to create initial value (And set the other values in the "metadata" argument!)
+        // Assign a new variable here, since if we modify "v" it will also modify the arguments collection, meaning
+        // we will pass an incorrect value to getClass/getTip
+        ret = Ext.isFunction(me.origRenderer) ? me.origRenderer.apply(scope, arguments) || '' : '';
+
+        cellValues.tdCls += ' ' + Ext.baseCSSPrefix + 'action-col-cell';
+        for (i = 0; i < len; i++) {
+            item = items[i];
+            icon = item.icon;
+            glyph = item.glyph;
+            clrIcon = item.clrIcon || '';//VROPS added
+
+            disabled = item.disabled || (item.isActionDisabled ? Ext.callback(item.isActionDisabled, item.scope || me.origScope, [view, rowIdx, colIdx, item, record], 0, me) : false);
+            tooltip  = item.tooltip  || (item.getTip     ? Ext.callback(item.getTip, item.scope || me.origScope, arguments, 0, me) : null);
+            altText  =                   item.getAltText ? Ext.callback(item.getAltText, item.scope || me.origScope, arguments, 0, me) : item.altText || me.altText;
+
+            // Only process the item action setup once.
+            if (!item.hasActionConfiguration) {
+                // Apply our documented default to all items
+                item.stopSelection = me.stopSelection;
+                item.disable = Ext.Function.bind(me.disableAction, me, [i], 0);
+                item.enable = Ext.Function.bind(me.enableAction, me, [i], 0);
+                item.hasActionConfiguration = true;
+            }
+
+            // If the ActionItem is using a glyph, convert it to an Ext.Glyph instance so we can extract the data easily.
+            if (glyph) {
+                glyph = Ext.Glyph.fly(glyph);
+            }
+
+            // Pull in tabIndex and ariarRols from item, unless the item is this, in which case
+            // that would be wrong, and the icon would get column header values.
+            tabIndex = (item !== me && item.tabIndex !== undefined) ? item.tabIndex : me.itemTabIndex;
+            ariaRole = (item !== me && item.ariaRole !== undefined) ? item.ariaRole : me.itemAriaRole;
+
+            ret += '<' + (icon ? 'img' : 'div') +
+                // VROPS | add featureId when rowFeatureId is provided, for better analytics and testing
+                (me.rowFeatureId ? ' data-feature-id="' + me.rowFeatureId + '"' : '') +
+                (typeof tabIndex === 'number' ? ' tabIndex="' + tabIndex + '"' : '') +
+                (ariaRole ? ' role="' + ariaRole + '"' : ' role="presentation"') +
+                (icon ? (' alt="' + altText + '" src="' + item.icon + '"') : '') +
+                ' class="' + me.actionIconCls + ' ' + Ext.baseCSSPrefix + 'action-col-' + String(i) + ' ' +
+                (disabled ? me.disabledCls + ' ' : ' ') +
+                (item.hidden ? Ext.baseCSSPrefix + 'hidden-display ' : '') +
+                (item.getClass ? Ext.callback(item.getClass, item.scope || me.origScope, arguments, undefined, me) : (item.iconCls || me.iconCls || '')) + '"' +
+                (tooltip ? ' data-qtip="' + Ext.util.Format.htmlEncode(tooltip) + '"' : '') +
+                (icon ? '/>' : glyph ? (' style="font-family:' + glyph.fontFamily + '">' + glyph.character + clrIcon + '</div>') : ('>' + clrIcon + '</div>'));//VROPS added clrIcon
+        }
+
+        return ret;
+    }
+});
+
+Ext.override(Ext.form.field.TextArea, {
+    afterRender: function () {
+        var me = this;
+        me.callParent(arguments);
+
+        me.needsMaxCheck = me.enforceMaxLength && me.maxLength !== Number.MAX_VALUE && !Ext.supports.TextAreaMaxLength;
+        if (me.needsMaxCheck) {
+            me.inputEl.on('paste', me.onPaste, me);
+        }
+
+        // fixing the resizable issue.
+        if (me.resizable === false) {
+            me.el.dom.getElementsByTagName('textarea')[0].style.resize = 'none';
+        }
+    }
+});
+
+/**
+ * Define a column for a context menu.
+ * Sample usage with useful options:
+ *   columns = [
+ *     {
+ *       xtype: 'menuactioncolumn',
+ *       stopSelection: false,  // Stops click-on-menu from selecting item row (default = true)
+ *       items: [               // Array of menu items
+ *         {
+ *           text: bundle['view.definitions.grid.context.delete'],
+ *
+ *           privilege: 'resources.monitoring.start',
+ *           privilegeHide: true,
+ *
+ *           shouldShowFn: function(data) { return !data.isHidden; },    // Function determines is menu item is shown (optional -- shown by default)
+ *           shouldEnableFn: function(data) { return !data.isLocked; },  // Function determines is menu item is enabled (optional -- enabled by default)
+ *
+ *           scope: this,
+ *           handler: function(view, rowIndex, colIndex, item, e, record) { ... }
+ *         },
+ *         ...
+ *       ]
+ *     }
+ *   ];
+ */
+Ext.define('Ext.grid.column.MenuActionColumn', {
+    extend : 'Ext.grid.column.Action',
+    alias : ['widget.menuactioncolumn'],
+    alternateClassName : 'Ext.grid.MenuActionColumn',
+    hideable : false,
+    draggable : false,
+    resizable : false,
+    stopSelection : false,
+    width : 28,
+    maxWidth : 28,
+    hidden : false,
+    stateId : 'menuactioncolumn',
+    actionIconCls : Ext.baseCSSPrefix + 'action-col-icon' + ' context-menu', // default class + specific one for context menu
+    constructor : function(config) {
+        var me = this;
+        me.ns = getNS();
+        var items = config.items || me.items;
+        delete config.items;
+        delete me.items;
+        me.items = [{
+            scope : me,
+            disabled : config.disabled,
+            isDisabled : config.isDisabled,
+            clrIcon : '<clr-icon class="' + Ext.baseCSSPrefix + 'action-col-0' + '" shape="ellipsis-vertical"></clr-icon>',
+            handler : function(grid, rowIndex, colIndex, item, e, record) {
+                if (!me.isMyMenuVisible) {
+                    var items = me.myMenu.getRefItems();
+                    for (var i = 0; i < items.length; i++) {
+                        if (items[i].handler) {
+                            items[i]._handler = items[i].handler;
+                            items[i]._onClick = items[i].onClick;
+                            delete items[i].handler;
+                        }
+
+                        var itemScope = items[i].scope || this;
+                        var handler = items[i]._handler;
+                        var onClick = items[i]._onClick;
+                        // Should item be shown for this object?
+                        var showItem = true;
+                        if (items[i].shouldShowFn) {
+                            showItem = items[i].shouldShowFn(record.data);
+                            items[i].setHidden(!showItem);
+                        }
+
+                        // Should item be enabled/disabled for this object?
+                        if (showItem) {
+                            var enableItem = true;
+                            if (items[i].shouldEnableFn) {
+                                enableItem = items[i].shouldEnableFn(record.data);
+                                items[i].setDisabled(!enableItem);
+                            }
+                        }
+
+                        (function(handler, i) {
+                            items[i].onClick = function() {
+                                if (!this.disabled) {
+                                    onClick.apply(this, arguments);
+                                    handler.apply(itemScope, [ grid, rowIndex, colIndex, item, e, record ]);
+                                }
+                            }
+                        })(handler, i);
+                    }
+                    me.openMenu(e.target);
+                }
+            }
+        }];
+        this.myMenuItems = items;
+        return this.callParent(arguments);
+    },
+
+    initComponent : function() {
+        var me = this;
+        this.myMenu = Ext.create('Ext.menu.Menu', {
+            floating : true,
+            plain : true,
+            items : this.myMenuItems,
+            listeners : {
+                scope : this,
+                show : function() {
+                    me.isMyMenuVisible = true;
+                },
+                hide : function() {
+                    me.isMyMenuVisible = false;
+                }
+            },
+            // VROPS | adds a featureId to the context menu for better targeting
+            featureId: me.menuFeatureId ? me.menuFeatureId : null
+        });
+        this.isMyMenuVisible = false;
+        this.on('destroy', function() {
+            Ext.destroy(me.myMenu);
+        });
+        return this.callParent(arguments);
+    },
+
+    openMenu : function(target) {
+        this.myMenu.showBy(target, "l-r", [ 5, 0 ]);
+    }
+});
+
+/**
+ * When creating the config for the checkbox in the header row of a grid,
+ * `focusable` is set to `false` when `checkOnly` is also `false`.
+
+ * See the following block in function `getHeaderConfig` of `Ext.selection.CheckboxModel` in Ext 6.6:
+ * ```
+ *     if (!me.checkOnly) {
+ *         config.tabIndex = undefined;
+ *         config.ariaRole = 'presentation';
+ *         config.focusable = false;
+ *     }
+ * ```
+ * Sencha Docs: https://docs.sencha.com/extjs/6.6.0/classic/src/CheckboxModel.js.html#line368
+
+ * This causes a bug when scrolling a grid which has an item focused; the grid jumps back to the focused element
+ * when the item is removed from the DOM after the grid container has a css transform applied by the `BufferedRenderer`.
+ * An instance of the bug is reported here: https://bugzilla.eng.vmware.com/show_bug.cgi?id=2458197
+ *
+ * The override here mimics the behaviour in Ext 6.7 where the code above looks like this, verbatim:
+ * ```
+ *     if (!me.checkOnly) {
+ *         // tabIndex and focusable properties should not be removed as
+ *         // they must depend on actual column configuration
+ *         config.ariaRole = 'presentation';
+ *     }
+ * ```
+ * Sencha Docs: https://docs.sencha.com/extjs/6.7.0/classic/src/CheckboxModel.js.html#line405
+ *
+ * There's more info @ https://reviewboard.eng.vmware.com/r/1630916/
+ */
+Ext.override(Ext.selection.CheckboxModel, {
+    getHeaderConfig: function () {
+        var me = this,
+            showCheck = me.showHeaderCheckbox !== false,
+            htmlEncode = Ext.String.htmlEncode,
+            config;
+
+        config = {
+            xtype: 'checkcolumn',
+            headerCheckbox: showCheck,
+            isCheckerHd: showCheck, // historically used as a dicriminator property before isCheckColumn
+            ignoreExport: true,
+            text: me.headerText,
+            width: me.headerWidth,
+            sortable: false,
+            draggable: false,
+            resizable: false,
+            hideable: false,
+            menuDisabled: true,
+            checkOnly: me.checkOnly,
+            checkboxAriaRole: 'presentation',
+            // Firefox needs pointer-events: none on the checkbox span to work around focusing issues
+            tdCls: Ext.baseCSSPrefix + 'selmodel-checkbox ' + me.tdCls,
+            cls: Ext.baseCSSPrefix + 'selmodel-column',
+            editRenderer: me.editRenderer || me.renderEmpty,
+            locked: me.hasLockedHeader(),
+            processEvent: Ext.emptyFn,
+
+            // It must not attempt to set anything in the records on toggle.
+            // We handle that in onHeaderClick.
+            toggleAll: Ext.emptyFn,
+
+            // The selection model listens to the navigation model to select/deselect
+            setRecordCheck: Ext.emptyFn,
+
+            // It uses our isRowSelected to test whether a row is checked
+            isRecordChecked: me.isRowSelected.bind(me)
+        };
+
+        /*** BEGIN VROPS OVERRIDE ------------------------------------------------------------------------------------*/
+        if (!me.checkOnly) {
+//      -   config.tabIndex = undefined;
+            config.ariaRole = 'presentation';
+//      -   config.focusable = false;
+        }
+        /** END VROPS OVERRIDE ---------------------------------------------------------------------------------------*/
+        else {
+            config.useAriaElements = true;
+            config.ariaLabel = htmlEncode(me.headerAriaLabel);
+            config.headerSelectText = htmlEncode(me.headerSelectText);
+            config.headerDeselectText = htmlEncode(me.headerDeselectText);
+            config.rowSelectText = htmlEncode(me.rowSelectText);
+            config.rowDeselectText = htmlEncode(me.rowDeselectText);
+        }
+
+        return config;
+    }
+});
+
+Ext.override(Ext.form.field.HtmlEditor, {
+    /**
+     * The private function
+     * get contentDocument for iframe if it is available
+     * or find and get private function getWin (@see declaration in sencha docs)
+     */
+    getDoc: function() {
+        return this.iframeEl.dom.contentDocument || /* VROPS start*/ this.getWin() ? this.getWin().document : null /* VROPS end*/;
+    }
+});
+
+// address an empty space issue, mostly happening at list widgets maximize / minimize
+Ext.override(Ext.grid.plugin.BufferedRenderer, {
+    setViewSize: function(viewSize, fromLockingPartner) {
+        var me = this,
+            store = me.store,
+            view = me.view,
+            ownerGrid,
+            rows = view.all,
+            elCount = rows.getCount(),
+            storeCount = store.getCount(),
+            start, end,
+            lockingPartner = me.view.lockingPartner && me.view.lockingPartner.bufferedRenderer,
+            diff = elCount - viewSize,
+            oldTop = 0,
+            maxIndex = Math.max(0, storeCount - 1),
+            // This is which end is closer to being visible therefore must be the first to have rows added
+            // or the opposite end from which rows get removed if shrinking the view.
+            pointyEnd; // VROPS
+        // Synchronize view sizes
+        if (lockingPartner && !fromLockingPartner) {
+            lockingPartner.setViewSize(viewSize, true);
+        }
+        diff = elCount - viewSize;
+        if (diff) {
+            // Must be set for getFirstVisibleRowIndex to work
+            me.scrollTop = me.scroller ? me.scroller.getPosition().y : 0;
+            pointyEnd = Ext.Number.sign((me.getFirstVisibleRowIndex() - rows.startIndex) - (rows.endIndex - me.getLastVisibleRowIndex())); //VROPS
+            me.viewSize = viewSize;
+            if (store.isBufferedStore) {
+                store.setViewSize(viewSize);
+            }
+            // If a store loads before we have calculated a viewSize, it loads me.defaultViewSize records.
+            // This may be larger or smaller than the final viewSize so the store needs adjusting when the view size is calculated.
+            if (elCount) {
+                // New start index should be current start index unless that's now too close to the end of the store
+                // to yield a full view, in which case work back from the end of the store.
+                // Ensure we don't go negative.
+                start = Math.max(0, Math.min(rows.startIndex, storeCount - viewSize));
+                // New end index works forward from the new start index ensuring we don't walk off the end
+                end = Math.min(start + viewSize - 1, maxIndex);
+                // Only do expensive adding or removal if range is not already correct
+                if (start === rows.startIndex && end === rows.endIndex) {
+                    // Needs rows adding to or bottom depending on which end is closest
+                    // to being visible (The pointy end)
+                    if (diff < 0) {
+                        me.handleViewScroll(pointyEnd);
+                    }
+                } else {
+                    // While changing our visible range, the locking partner must not sync
+                    if (lockingPartner) {
+                        lockingPartner.disable();
+                    }
+                    // View must expand
+                    if (diff < 0) {
+                        // If it's *possible* to add rows...
+                        if (storeCount > viewSize && storeCount > elCount) {
+                            // Grab the render range with a view to appending and prepending
+                            // nodes to the top and bottom as necessary.
+                            // Store's getRange API always has been inclusive of endIndex.
+                            store.getRange(start, end, {
+                                callback: function(newRecords, start, end) {
+                                    ownerGrid = view.ownerGrid;
+                                    // Append if necessary
+                                    if (end > rows.endIndex) {
+                                        rows.scroll(Ext.Array.slice(newRecords, rows.endIndex + 1, Infinity), 1, 0);
+                                    }
+                                    // Prepend if necessary
+                                    if (start < rows.startIndex) {
+                                        oldTop = rows.first(true);
+                                        rows.scroll(Ext.Array.slice(newRecords, 0, rows.startIndex - start), -1, 0);
+                                        // We just added some rows to the top of the rendered block
+                                        // We have to bump it up to keep the view stable.
+                                        me.bodyTop -= oldTop.offsetTop;
+                                    }
+                                    me.setBodyTop(me.bodyTop);
+                                    // The newly added rows must sync the row heights
+                                    if (lockingPartner && !fromLockingPartner && (ownerGrid.syncRowHeight || ownerGrid.syncRowHeightOnNextLayout)) {
+                                        lockingPartner.setViewSize(viewSize, true);
+                                        ownerGrid.syncRowHeights();
+                                    }
+                                }
+                            });
+                        } else // If not possible just refresh
+                        {
+                            me.refreshView(0);
+                        }
+                    } else // View size is contracting
+                    {
+                        // If removing from top, we have to bump the rendered block downwards
+                        // by the height of the removed rows.
+                        if (pointyEnd === 1) {
+                            oldTop = rows.item(rows.startIndex + diff, true).offsetTop;
+                        }
+                        // Clip the rows off the required end
+                        rows.clip(pointyEnd, diff);
+                        me.setBodyTop(me.bodyTop + oldTop);
+                    }
+                    if (lockingPartner) {
+                        lockingPartner.enable();
+                    }
+                }
+            }
+
+            // Update scroll range
+            me.refreshSize();
+        }
+        return viewSize;
+    },
+
+    getThemeRowHeight: function() {
+        /* VROPS start
+        var me = this,
+            testEl;
+
+        if (!me.themeRowHeight) {
+            testEl = Ext.getBody().createChild({
+                cls: Ext.baseCSSPrefix + 'theme-row-height-el'
+            });
+            me.self.prototype.themeRowHeight = testEl.dom.offsetHeight;
+            testEl.destroy();
+        }
+        return me.themeRowHeight;
+        VROPS end */
+        return 37; // we cannot change css variables $grid-row-height as it goes too deep
+    }
+});

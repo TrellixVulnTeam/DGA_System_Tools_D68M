@@ -1,0 +1,731 @@
+
+
+
+    
+    
+    
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge;chrome=1;"/>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+    
+    
+    <link rel="shortcut icon" type="image/x-icon" href="favicon.ico"/>
+    <title>vRealize Operations Manager</title>
+    
+
+    <link rel="stylesheet" type="text/css" href="themes/vrops-light/vrops-light-all_1.css?version=8.2.0.16949153">
+    <link rel="stylesheet" type="text/css" href="themes/vrops-light/vrops-light-all_2.css?version=8.2.0.16949153">
+    <link rel="stylesheet" type="text/css" href="themes/vrops-light/vrops-light-all_3.css?version=8.2.0.16949153">
+    
+    
+
+    
+    <link rel="stylesheet" type="text/css" href="themes/vrops-light/clarity/light-all.css">
+    
+    
+    <link rel="stylesheet" type="text/css" href="lib/clarity/clarity-icons/clarity-icons.min.css">
+    <link rel="stylesheet" type="text/css" href="themes/clarity-overrides.css?version=8.2.0.16949153">
+
+    <script type="text/javascript" src="lib/extjs6.6/core/ext-all.js"></script>
+    <script type="text/javascript" src="js/components/ext-login-overrides.js?version=8.2.0.16949153"></script>
+    <script type="text/javascript" src="lib/extjs6.6/charts/charts.js"></script>
+    <script type="text/javascript" src="js/components/SessionProvider.js?version=8.2.0.16949153"></script>
+    <script type="text/javascript">
+        // adding IE support for string startWith and endWidth methods
+        if (!String.prototype.startsWith) {
+            String.prototype.startsWith = function (searchString, position) {
+                position = position || 0;
+                return this.substr(position, searchString.length) === searchString;
+            };
+        }
+        if (!String.prototype.endsWith) {
+            String.prototype.endsWith = function (searchString, position) {
+                var subjectString = this.toString();
+                if (typeof position !== 'number' || !isFinite(position) || Math.floor(position) !== position || position > subjectString.length) {
+                    position = subjectString.length;
+                }
+                position -= searchString.length;
+                var lastIndex = subjectString.lastIndexOf(searchString, position);
+                return lastIndex !== -1 && lastIndex === position;
+            };
+        }
+        // workaround for IE customElements exception
+        if (!window.customElements) {
+            customElements = {};
+            customElements.define = Ext.emptyFn;
+        }
+
+    </script>
+    <script type="text/javascript" src="lib/custom-elements/custom-elements.min.js"></script>
+    <script type="text/javascript" src="lib/clarity/clarity-icons/clarity-icons.min.js"></script>
+    
+<style>
+    * {
+        line-height: normal;
+    }
+    #authField .x-field {
+        width: 100%;
+        padding-bottom: 30px;
+    }
+
+    #loginForm .x-mask {
+        background-color: rgba(255, 255, 255, 0.5);
+    }
+    .spinner-center {
+        margin-left: auto;
+        margin-right: auto;
+        left: 0;
+        right: 0;
+        position: absolute;
+        top: 50%;
+    }
+    .login-wrapper .login .login-group .password {
+        margin: 18px 0 18px 0;
+    }
+
+    .login-wrapper .login .login-group .btn {
+        margin: 24px 0 0 0;
+    }
+    .login-wrapper .login .login-group {
+        padding: 83px 0 0 0;
+    }
+
+    /* Decreasing menu items height that appeared from clarity upgrade */
+    .dropdown-menu .btn, .dropdown-menu .dropdown-item {
+        height: 25px;
+        line-height: inherit;
+    }
+
+</style>
+<script type="text/javascript">
+    Ext.onReady(function () {
+        Ext.state.Manager.setProvider(new Ext.state.CookieProvider());
+        var me = this;
+
+        me.showAlertMessage = function (msg, type) {
+            var errMsgIconTypesMap = {
+                'warning': 'exclamation-triangle',
+                'danger': 'exclamation-circle',
+                'info': 'info-circle'
+            };
+            var msgContainer = document.getElementById('errMsgContainer');
+            var errMsgWrapper = document.getElementById('errMsgWrapper');
+            var errMsgIcon = document.getElementById('errMsgIcon');
+            var msgText = document.getElementById('errorMsg');
+            var classToApply = 'alert-' + type;
+            msgContainer.style['visibility'] = 'visible';
+            msgContainer.setAttribute('clralerttype', type);
+            errMsgIcon.setAttribute('shape', errMsgIconTypesMap[type]);
+            if (errMsgWrapper.classList.length > 1) {
+                errMsgWrapper.classList.remove(errMsgWrapper.classList[1]);
+            }
+            errMsgWrapper.classList.add(classToApply);
+            msgText.innerHTML = msg;
+        };
+
+
+        me.removeAlertMessage = function() {
+            var msgContainer = document.getElementById('errMsgContainer');
+            msgContainer.style['visibility'] = 'hidden';
+        };
+
+        me.showSsoErrorMessage = function (show) {
+            if (!show) {
+                me.removeAlertMessage();
+            } else if (!Ext.isEmpty(me.ssoErrorMessage)) {
+                // check whether logout link already concatenated to error message
+                if (!Ext.isEmpty(me.ssoShowLogOutLink) && me.ssoErrorMessage.indexOf('onClick="logOutSSOUser()') === -1) {
+                    me.ssoErrorMessage += '<br><br>';
+                    me.ssoErrorMessage += '<a href="javascript:void(0)" onClick="logOutSSOUser()" style="color:#007cbb">' + 'Click here to log out the SSO session for this user.' + '</a>';
+                }
+                me.showAlertMessage(me.ssoErrorMessage, 'danger');
+            }
+        };
+
+        //Detect if SSO login failed and display error message
+        this.ssoErrorMessage = '';
+        this.ssoLogOutURL = '';
+        this.ssoShowLogOutLink = '';
+
+        //Detect if vIDM login failed and display error message
+        this.vidmLoginError = '';
+
+        //Detect if vIDM or SSO login failed inside vROps
+        this.loginError = '';
+
+        //Detect if should immediately direct to sso server
+        this.redirectBackUrl = '';
+
+        
+        
+        
+        
+        
+        
+
+
+        //Check if we need to logout of SSO session
+        if (!Ext.isEmpty(me.ssoLogOutURL)) {
+
+            if (Ext.form.field.VTypes['url'](me.ssoLogOutURL)) {
+                var loginForm = Ext.get('loginForm');
+                var loginMask = Ext.get('loginMask');
+
+                loginMask.setVisible(true);
+                loginForm.setStyle('opacity', 0.25);
+
+                window.open(ssoLogOutURL, "_self");
+            } else {
+                me.showAlertMessage('Unable to log out of the single sign-on session. Try logging out of SSO manually, or close the browser to clear the SSO session.', 'alert-danger');
+            }
+        }
+
+        var cleanupLocalStorage = function() {
+            if (Ext.supports.LocalStorage) {
+                // removing widgets stored in local storage from previous session on new login
+                localStorage.removeItem("copiedWidgets");
+            }
+        };
+        //Logout of SSO when user is stuck
+        this.logOutSSOUser = function () {
+            window.open(me.ssoShowLogOutLink, "_self");
+        };
+
+        this.logInSSOUser = function (force) {
+            var loginForm = Ext.get('loginForm');
+            var loginMask = Ext.get('loginMask');
+            var timezone = -new Date().getTimezoneOffset();
+
+            loginMask.setVisible(true);
+            loginForm.setStyle('opacity', 0.25);
+
+            var urlAnchor = (document.URL.split('#').length > 1) ? document.URL.split('#')[1] : '';
+            loginForm.mask();
+            Ext.Ajax.request({
+                url: 'login.action?mainAction=getSsoRedirectUrl',
+                params: {
+                    urlAnchor: urlAnchor,
+                    timezone: timezone,
+                    forceLogin: force
+                },
+                disableCaching: true,
+                timeout: 300000,
+                scope: this,
+                success: function (response) {
+                    cleanupLocalStorage();
+                    loginForm.unmask();
+                    var responseJson = Ext.JSON.decode(response.responseText);
+                    var success = responseJson.success;
+                    var redirectURL = responseJson.ssoRedirectURL;
+                    var errorMsg = responseJson.errorMsg;
+
+                    if (success === true) {
+
+                        if (Ext.isEmpty(redirectURL)) {
+                            me.showAlertMessage('Single Sign-On Redirect URL is Null.', 'danger');
+                        } else if (!Ext.form.field.VTypes['url'](redirectURL)) {
+                            me.showAlertMessage('Invalid Single Sign-On Redirect URL.', 'danger')
+                        } else {
+                            window.open(redirectURL, "_self");
+                        }
+
+                    } else {
+                        if (Ext.isEmpty(errorMsg)) {
+                            errorMsg = 'Unable to retrieve the single sign-on URL.';
+                        }
+                        me.showAlertMessage(errorMsg, 'danger');
+                    }
+                },
+                failure: function () {
+                    me.showAlertMessage('Unable to retrieve the single sign-on URL.', 'danger');
+                    loginMask.setDisplayed(false);
+                    loginForm.setStyle('opacity', 1);
+                    loginForm.unmask();
+                }
+            });
+
+        };
+
+        this.logInVidmUser = function (force) {
+            var loginForm = Ext.get('loginForm');
+            var loginMask = Ext.get('loginMask');
+            var timezone = -new Date().getTimezoneOffset();
+
+            loginMask.setVisible(true);
+            loginForm.setStyle('opacity', 0.25);
+
+            var urlAnchor = (document.URL.split('#').length > 1) ? document.URL.split('#')[1] : '';
+
+            Ext.Ajax.request({
+                url: 'login.action?mainAction=getVidmRedirectUrl',
+                params: {
+                    urlAnchor: urlAnchor,
+                    timezone: timezone,
+                    forceLogin: force
+                },
+                disableCaching: true,
+                timeout: 300000,
+                scope: this,
+                success: function(response) {
+                    cleanupLocalStorage();
+                    var responseJson = Ext.JSON.decode(response.responseText);
+                    var success = responseJson.success;
+                    var redirectURL = responseJson.vidmRedirectURL;
+                    var errorMsg = responseJson.errorMsg;
+
+                    if(success === true) {
+
+                        if(Ext.isEmpty(redirectURL)) {
+                            this.showAlertMessage('VMware Identity Manager Redirect URL is Null.', 'info');
+                        }else if(!Ext.form.field.VTypes['url'](redirectURL)) {
+                            this.showAlertMessage('Invalid VMware Identity Manager Redirect URL.', 'info');
+                        } else {
+                            window.open(redirectURL, "_self");
+                        }
+
+                    } else {
+                        if(Ext.isEmpty(errorMsg)){ errorMsg = 'Unable to retrieve the VMware Identity Manager URL.';}
+                        this.showAlertMessage(errorMsg, 'alert-danger');
+                    }
+                },
+                failure: function()  {
+                    me.showAlertMessage('Unable to retrieve the VMware Identity Manager URL.', 'danger');
+                    loginMask.setDisplayed(false);
+                    loginForm.setStyle('opacity', 1);
+                }
+            });
+
+        };
+
+        //Check if we need to logout of SSO session
+        if (!Ext.isEmpty(me.redirectBackUrl)) {
+            this.logInSSOUser();
+        }
+
+        this.authStore = Ext.create('Ext.data.Store', {
+            fields: ['id', 'name', 'description', 'type'],
+            proxy: {
+                type: 'ajax',
+                url: 'login.action?mainAction=getAuthSources',
+                reader: {
+                    type: 'json'
+                }
+            },
+            autoLoad: true,
+            listeners: {
+                scope: this,
+                'load': function (store, records) {
+                    //Retrieve the state of AuthSource combobox by passing it's stateId
+                    var authSourceState = Ext.state.Manager.get('login-authSourceSelector');
+                    var sourceIndex = -1;
+                    if (authSourceState && authSourceState.value) {
+                        //Ensure that the AuthSource that was used for login, still exists in getAuthSources() response
+                        sourceIndex = store.findBy(
+                            function (record) {
+                                if (record.get('id') === authSourceState.value) {
+                                    return true;  // an AuthSource with the stored state exists
+                                }
+                                return false;  // there is no AuthSource in the store with this data
+                            }
+                        );
+                    }
+
+                    // If the source does not exist (might have been deleted by other users meanwhile), do not try
+                    // to retain the combobox state. Show 'Local Users' then.
+                    this.authSrcField.setValue(sourceIndex == -1 ? 'localItem' : records[sourceIndex]);
+
+                    if (!Ext.isEmpty(me.ssoErrorMessage)) {
+                        if (ssoErrorMessage.indexOf("concurrentSessionDetected") >= 0) {
+                            var dialogErrorMsg = 'There is another active session for this user. This may be because of concurrent logins or because of a session that has not expired. To close the other session and continue, click OK.';
+                            var errorMsg = 'User has an active UI session.';
+                            if (confirm(dialogErrorMsg)) {
+                                this.logInSSOUser(true);
+                                return;
+                            } else {
+                                this.showAlertMessage(errorMsg, 'danger');
+                            }
+                        }
+                        var ssoSourceId;
+                        var ssoSource = records.filter(function(record) {
+                            return record.get('type') === 'SSO_SAML';
+                        });
+                        if (ssoSource[0].internalId -1 == sourceIndex) {
+                            me.showSsoErrorMessage(true);
+                        }
+                    }
+
+                    if (window.localStorage && (!window.frameElement || window.frameElement.id != 'd')) {
+                        window.localStorage.removeItem('login');
+                        window.localStorage.setItem('login', 'loaded');
+                    }
+
+                    if (!Ext.isEmpty(vidmLoginError)) {
+                        var errorMsg = vidmLoginError;
+                        if (vidmLoginError.indexOf("concurrentSessionDetected") >= 0) {
+                            var dialogErrorMsg = 'There is another active session for this user. This may be because of concurrent logins or because of a session that has not expired. To close the other session and continue, click OK.';
+                            var errorMsg = 'User has an active UI session.';
+                            if (confirm(dialogErrorMsg)) {
+                                this.logInVidmUser(true);
+                                return;
+                            }
+                        } else if (vidmLoginError.indexOf("notAllowedInteractiveLogin") >= 0) {
+                            errorMsg = 'User is not privileged for interactive login.';
+                        }
+                        this.showAlertMessage(errorMsg, 'danger');
+                    }
+
+                    if (!Ext.isEmpty(loginError)) {
+                        var errorMsg = loginError;
+                        if (loginError.indexOf("notAllowedInteractiveLogin") >= 0) {
+                            errorMsg = 'User is not privileged for interactive login.';
+                        }
+                        this.showAlertMessage(errorMsg, 'danger');
+                    }
+                }
+            }
+        });
+
+        // Auth source selector
+        this.authSrcField = Ext.create('Ext.form.ComboBox', {
+            id: 'authSelector',
+            store: this.authStore,
+            queryMode: 'local',
+            editable: false,
+            displayField: 'name',
+            valueField: 'id',
+            renderTo: 'authField',
+            value: 'localItem',
+            stateful: true,
+            stateId: 'login-authSourceSelector',
+            hideLabel: true,
+            fieldLabel: "Authentication Source",
+            listeners: {
+                beforestaterestore: function (cmp, state) {
+                    // Since the "LOCAL" option doesn't have a value (it's null/undefined) we need
+                    // to return if we find an empty value so that the combobox doesn't get confused
+                    // and leave the field blank. Stopping the
+                    if (!state.value) {
+                        return false;
+                    }
+                },
+                change: function (combo, newVal, oldVal) {
+                    var selected = combo.getSelectedRecord();
+                    var sourceType;
+
+                    if (selected != null) {
+                        sourceType = selected.get('type');
+                    }
+
+                    //var sourceType = combo.getSelectedRecord().get('type');
+                    var loginBtn = Ext.getCmp("loginBtn");
+                    if (loginBtn.hasCls('disabled')) {
+                        loginBtn.removeCls('disabled');
+                        loginBtn.enable();
+                    }
+                    if (sourceType !== 'SSO_SAML' && me.ssoSelected) {
+                        this.showSsoErrorMessage(false);
+                        me.ssoSelected = false;
+                    }
+
+                    if (sourceType == 'SSO_SAML') {
+                        // disable the text fields
+                        userNameField.disable();
+                        passwordField.disable();
+                        //TODO: tooltip not appearing for some reason
+
+                        loginBtn.setText('Redirect');
+                        loginBtn.setTooltip('Redirect to single sign-on server for authentication.');
+
+                        if (!Ext.isEmpty(me.ssoErrorMessage) && !Ext.isEmpty(me.ssoShowLogOutLink)) {
+                            loginBtn.addCls('disabled');
+                            loginBtn.disable();
+                        }
+                        // temprerary flag to fix bug #2139639
+                        this.ssoSelected = true;
+
+                        me.showSsoErrorMessage(true);
+                    } else if (sourceType == 'VIDM') {
+                        // disable the text fields
+                        userNameField.disable();
+                        passwordField.disable();
+                        //TODO: tooltip not appearing for some reason
+                       loginBtn.setText('Redirect');
+                       loginBtn.setTooltip('Redirect to VMware Identity Manager server for authentication.');
+                    }  else {
+                        userNameField.enable();
+                        passwordField.enable();
+                        loginBtn.setText('LOG IN');
+                        loginBtn.setTooltip('LOG IN');
+                    }
+                },
+                scope: this
+            },
+            listConfig: {
+                tpl: Ext.create('Ext.XTemplate',
+                        '<ul><tpl for=".">',
+                        '<li role="option" class="x-boundlist-item" title="{[Ext.String.htmlEncode(this.getToolTip(values))]}">{[this.getEncodedSource(values.name, values.type)]}</li>',
+                        '</tpl>' +
+                        '</ul>',
+                        {
+                            getToolTip: function (values) {
+                                if (values.type) {
+
+                                    var toolTipTemplate = '{0} - {1}';
+
+                                    switch (values.type) {
+                                        case 'VC':
+                                            return Ext.String.format(toolTipTemplate, values.name, 'Virtual Center');
+                                            break;
+
+                                        case 'OPEN_LDAP':
+                                            return Ext.String.format(toolTipTemplate, values.name, 'Open LDAP');
+                                            break;
+
+                                        case 'VC_GROUP':
+                                            return Ext.String.format(toolTipTemplate, values.name, 'Virtual Center Group');
+                                            break;
+
+                                        case 'ACTIVE_DIRECTORY':
+                                            return Ext.String.format(toolTipTemplate, values.name, 'Active Directory');
+                                            break;
+
+                                        case 'OTHER':
+                                            return Ext.String.format(toolTipTemplate, values.name, 'Other');
+                                            break;
+
+                                        case 'LOCAL':
+                                            return Ext.String.format(toolTipTemplate, values.name, 'Local User');
+                                            break;
+
+                                        case 'SSO_SAML':
+                                            return Ext.String.format(toolTipTemplate, values.name, 'SSO SAML');
+                                            break;
+
+                                        default:
+                                            return values.name;
+                                    }
+
+                                } else {
+                                    return values.name;
+                                }
+                            },
+                            getEncodedSource: function (name, type) {
+                                // For differentiating SSO hosts, add a suffix label
+                                var suffix = (type == 'SSO_SAML') ? ' ' + '(SSO)' : '';
+
+                                // Encode the sourceName to avoid XSS attacks
+                                return Ext.String.htmlEncode(name) + suffix;
+                            }
+                        }
+                )
+            }
+        });
+
+        var userNameField = new Ext.form.TextField({
+            id: 'userName',
+            renderTo: 'userNameField',
+            width: '100%',
+            emptyText: "User name"
+        });
+
+        var login = function (force) {
+            var userName = userNameField.getValue();
+            var password = passwordField.getValue();
+            var authSourceId = authSrcField.getValue();
+            var authSourceName = authSrcField.rawValue;
+
+            var authSourceType = "LOCAL";
+            var source = this.authStore.getById(authSourceId);
+            if (source && !Ext.isEmpty(source.data.type)) {
+                authSourceType = source.data.type;
+            }
+
+            if (authSourceType == 'SSO_SAML') {
+                this.logInSSOUser();
+                return;
+            }
+
+            if (authSourceType == 'VIDM') {
+                this.logInVidmUser();
+                return;
+            }
+
+            if (userName != '' && password != '') {
+                var loginForm = Ext.get('loginForm');
+                var loginMask = Ext.get('loginMask');
+
+                loginMask.setVisible(true);
+                loginForm.setStyle('opacity', 0.25);
+                loginForm.mask();
+                Ext.Ajax.request({
+                    url: 'login.action',
+                    method: 'POST',
+                    params: Ext.urlEncode({
+                        mainAction: 'login',
+                        userName: userName,
+                        password: password,
+                        authSourceId: authSourceId,
+                        authSourceName: authSourceName,
+                        authSourceType: authSourceType,
+                        forceLogin: force,
+                        timezone: (-new Date().getTimezoneOffset()),
+                        languageCode: 'us'
+                    }),
+                    disableCaching: true,
+                    timeout: 900000,
+                    success: function (response, options) {
+                        cleanupLocalStorage();
+                        loginForm.unmask();
+                        var responseText = response.responseText;
+                        if (responseText.indexOf('<!-- SessionResolve_Page -->') > 0) {
+                            window.location.reload(true);
+                            return;
+                        }
+                        if (responseText == 'ok') {
+                            window.location.reload();
+                        } else if (responseText.indexOf('<!-- Index_Page -->') > 0) {
+                            // Bug 1477494 - Corner case scenario where the user opens up login pages in two separate tabs,
+                            // From first tab - user logs in successfully ,
+                            // From second tab - if he tries to login again (without refreshing the browser), then he should
+                            //    be redirected to our main page (instead of "incorrect login" error shown in login form ).
+                            //    If user chooses to refresh the second tab instead, the user will automatically be
+                            //    redirected to the main page. The same functionality is expected even when the user clicks 'login'
+                            window.location.reload();
+                        } else {
+                            var errorMsg = 'Incorrect user name/password.';
+                            if (responseText.toLowerCase().indexOf("locked") >= 0) {
+                                //Locked account should appear as incorrect login per PSP policy
+                                errorMsg = 'Incorrect user name/password.';
+                            } else if (responseText.toLowerCase().indexOf("role") >= 0) {
+                                //TODO display localized message from backend API response
+                                errorMsg = 'User does not have any roles assigned.';
+                            } else if (responseText.indexOf("Unable to connect to any locators") >= 0 || responseText.indexOf("rejected from java.util.concurrent.ThreadPoolExecutor") >= 0) {
+                                errorMsg = 'Unable to connect to platform services.';
+                            } else if (responseText.indexOf("controllerDown") >= 0) {
+                                errorMsg = 'Platform services are in maintenance. Try logging in later.';
+                            } else if (responseText.indexOf("casaIsDown") >= 0) {
+                                errorMsg = 'CaSA is down, unable to log in. You will not be able to log in until the CaSA service is up again. If you are unable to login to for an extended period, contact customer support.';
+                            } else if (responseText.indexOf("notAllowedInteractiveLogin") >= 0) {
+                                errorMsg = 'User is not privileged for interactive login.';
+                            } else if (responseText.indexOf("SourceUnavailable") >= 0) {
+                                errorMsg = 'Login server is unreachable.';
+                            } else if (responseText.indexOf("MultipleDomainsExist") >= 0) {
+                                errorMsg = 'There are multiple domains associated with this authentication source.&lt;br&gt;Please provide the user name in the format &#034;username@domain.com&#034; or &#034;domain.com\\username&#034;.';
+                            } else if (responseText.indexOf("concurrentSessionDetected") >= 0) {
+                                errorMsg = 'There is another active session for this user. This may be because of concurrent logins or because of a session that has not expired. To close the other session and continue, click OK.';
+                                var r = confirm(errorMsg);
+                                if (r == true) {
+                                    login(true);
+                                    return;
+                                } else {
+                                    errorMsg = 'User has an active UI session.';
+                                }
+                            }
+
+                            loginMask.setDisplayed(false);
+                            loginForm.setStyle('opacity', 1);
+
+                            me.showAlertMessage(errorMsg, 'danger');
+                        }
+                    },
+                    failure: function (response, options) {
+                        loginMask.setDisplayed(false);
+                        loginForm.setStyle('opacity', 1);
+                        loginForm.unmask();
+                    }
+                });
+            }
+            else {
+                me.showAlertMessage('Please enter user name and password.', 'danger');
+            }
+        };
+
+        document.body.onkeyup = function (e) {
+            if (e.keyCode == Ext.event.Event.CAPS_LOCK) {
+                me.removeAlertMessage();
+            }
+        };
+
+        var passwordField = new Ext.form.TextField ({
+            id: 'password',
+            renderTo: 'passwordField',
+            inputType: 'password',
+            emptyText: "Password",
+            scope: this,
+            width: '100%',
+            enableKeyEvents: true,
+            listeners: {
+                keydown: function (field, e) {
+                    var event = e.browserEvent;
+                    if ((event.which && event.which == 13) || (event.keyCode && event.keyCode == 13)) {
+                        login();
+                    }
+                },
+                keypress: function (field, e) {
+                    var charCode = e.getCharCode();
+                    if (!e.shiftKey && charCode >= Ext.event.Event.A && charCode <= Ext.event.Event.Z) {
+                        me.showAlertMessage('Caps Lock is on', 'warning');
+                    }
+                },
+                blur: function () {
+                    me.removeAlertMessage();
+                }
+            }
+        });
+
+        var loginBtn = new Ext.Button({
+            id: 'loginBtn',
+            renderTo: 'loginForm',
+            cls: 'btn btn-primary btn-block',
+            ui: '',
+            text: 'LOG IN',
+            scope: this,
+            handler: login
+        });
+
+        userNameField.focus();
+
+        
+
+        
+    });
+</script>
+</head>
+<body>
+<div class="login-wrapper">
+    <form class="login">
+        <div class="title">
+            VMware<span class="trademark">&trade;</span>
+        </div>
+        <div class="title">
+            vRealize Operations Manager<span class="trademark">&reg;</span>
+        </div>
+        <div id="loginForm" class="login-group">
+            <div id="authField"></div>
+            <div class="username" id="userNameField"></div>
+            <div class="password" id="passwordField"></div>
+            <clr-alert style="visibility:hidden" id="errMsgContainer" >
+                <div id="errMsgWrapper" class="alert ">
+                    <div class="alert-items">
+                        <clr-alert-item class="alert-item">
+                            <div class="alert-icon-wrapper">
+                                <clr-icon id="errMsgIcon" class="alert-icon" shape="danger"></clr-icon>
+                            </div>
+                            <span id="errorMsg" class="alert-text"></span>
+                        </clr-alert-item>
+                    </div>
+                </div>
+            </clr-alert>
+        </div>
+        <div id="loginMask" style="display:none" class="spinner spinner-center"></div>
+    </form>
+</div>
+
+</div>
+<!-- This comment is necessary for AJAX handlers (see commonJS.jsp). Don't modify or remove. -->
+<!-- Login_Page -->
+</body>
+</html>

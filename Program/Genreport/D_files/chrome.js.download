@@ -1,0 +1,218 @@
+/**
+ * Copyright 2013 VMware, Inc.  All rights reserved. -- VMware Confidential
+ */
+
+// Disable backspace button when not in an input. This prevents the backspace
+// from causing the history to go backwards, which can get annoying if you think
+// you're on an input and you're not, especially in modal windows.
+Ext.on('keydown', function(e, t) {
+    if (e.getKey() == e.BACKSPACE && (!/^(input|textarea)$/i.test(t.tagName) || t.disabled || t.readOnly)) {
+        e.stopEvent();
+    }
+});
+
+// Client-side session timeout: Log the user out of the system if they haven't
+// been active during a timeout window (defined as 'sessionTimeoutMillis')
+// The setTimeout function has a maximum value 2147483647. If the sessionTimeoutMillis exceeds the maximum setValue then the timer will be
+// set multiple times until the sessionElapseTime equals the sessionTimeoutMillis.
+
+var clientSessionTimer;
+var sessionElapseTime = 0;
+var MAX_SET_TIMEOUT = 2147483647;
+
+var setSessionTimeout = function(remainingSessionTime) {
+    if (Ext.util.Cookies.get('rst') == null) {
+        if (window.localStorage && window.localStorage.getItem) {
+            if (window.localStorage.getItem('sto') != null) {
+                window.localStorage.removeItem('sto');
+            }
+            window.localStorage.setItem('sto', '1');
+        }
+        window.onbeforeunload = undefined;
+        if (window.dashboardWindowUnloadFn) {
+            window.removeEventListener("beforeunload", dashboardWindowUnloadFn);
+        }
+        proceedToLogout(true);
+    } else {
+        clientSessionTimer = setTimeout(function() {
+                setSessionTimeout(remainingSessionTime);
+        },remainingSessionTime);
+    }
+};
+
+var setClientSessionTimer = function() {
+
+    if (clientSessionTimer != null) {
+        clearTimeout(clientSessionTimer);
+    }
+
+    var remainingSessionTime = sessionTimeoutMillis - sessionElapseTime;
+
+    if( remainingSessionTime <= MAX_SET_TIMEOUT) {
+        var expireDate = new Date(new Date().getTime() + remainingSessionTime - 3000);
+        Ext.util.Cookies.set('rst', '1', expireDate);
+        clientSessionTimer = setTimeout(function() {
+            // If the session timeout triggers, log the user out but maintain
+            // their state for when they log back in.
+            setSessionTimeout(remainingSessionTime);
+
+
+        }, remainingSessionTime);
+
+    } else {
+
+        clientSessionTimer = setTimeout(function() {
+            sessionElapseTime += MAX_SET_TIMEOUT;
+            setClientSessionTimer();
+        }, MAX_SET_TIMEOUT);
+    }
+};
+
+var resetClientSessionTimer = function(conn, response, options, eOpts) {
+    // CollectionNotifications widget makes polling for every 5 mins, Due to this, the logout will never happen
+    // in cases where sessionTimeOut (globalSetting) value is greater than 5 mins.
+    // Intentionally skipping the timer reset for those Polling requests
+    if (options && options.url.indexOf('getCollectionNotifications') != -1) {
+        return;
+    }
+    sessionElapseTime = 0;
+    setClientSessionTimer();
+};
+
+Ext.Ajax.addListener('requestcomplete', resetClientSessionTimer);
+Ext.Ajax.addListener('requestexception', resetClientSessionTimer);
+
+Ext.require('Ext.vcops.chrome.SuiteUI');
+
+Ext.onReady(function() {
+    // Setup history manager
+    Ext.History.init();
+
+    // Fix a bug in Ext JS 4.2 that breaks all date pickers.
+    Ext.picker.Date.prototype.dayNames = Ext.Date.dayNames;
+});
+
+Ext.application({
+    name: 'Ext.vcops.chrome',
+
+    requires: ['Ext.vcops.CSPTokenStub'],
+
+    appFolder: 'js/chrome',
+
+    /**
+     * By setting this property, the application instance can be accessed from anywhere
+     * by using 'Ext.vcops.chrome.Application' global variable.
+     */
+    appProperty: 'Application',
+
+    autoCreateViewport: true,
+
+    models: ['Object'],
+
+    stores: ['Objects'],
+
+    controllers: [
+        'ApplicationStateController', 'ObjectNavigatorController',
+        'ObjectContentController', 'RemediationActionController'
+    ],
+
+    constructor: function () {
+
+        // Use the application as global message bus.
+        messageBus = this;
+
+        // Helper functions for loading application state
+        applicationState = Ext.create('Ext.vcops.chrome.controller.ApplicationStateHelper');
+
+        // Create the message bus registry that holds all registered events of the message bus.
+        var registry = Ext.create('Ext.vcops.chrome.messagebus.MessageBusRegistry', messageBus);
+
+        this.getMessageBusRegistry = function () {
+            return registry;
+        };
+
+        // Invoke super constructor.
+        this.callParent(arguments);
+    },
+
+    launch: function () {
+
+        var currentApplicationState = applicationState.getCurrentApplicationState();
+        var dashboardState = 'dashboard';
+
+        // Initialize the SuiteUI connection
+        Ext.vcops.chrome.SuiteUI.init();
+
+        if (isFirstRun) {
+            Ext.create('Ext.vcops.initialConfiguration.ConfigurationWizard', {
+                isNewConfiguration: true,
+                autoShow: true,
+                listeners: {
+                    close: function (panel) {
+                        window.location.hash = '/home/quickStart';
+                        window.location.reload();
+                    }
+                }
+            });
+        } else if (showCeipWindow) {
+            Ext.create('Ext.vcops.initialConfiguration.CeipWindow', {
+                autoShow: true,
+                close: function () {
+                    window.location.reload();
+                }
+            });
+        } else if (warnAboutExpiry) {
+            // Shows password expiry warning message, having a button linking to 'ChangePassword' window
+            Ext.MessageBox.show({
+                title: bundle['main.msg.warning'],
+                icon: Ext.MessageBox.WARNING,
+                buttons: Ext.MessageBox.YESNO,
+                buttonText: {
+                    yes: bundle['userSettings.changePassword']
+                },
+                msg: bundle['userManagement.passwordWarning'],
+                fn: function (buttonId, name, opt) {
+                    if (buttonId == 'yes') {
+                        Ext.create('Ext.vcops.chrome.wizard.ChangePasswordWindow').show();
+                    }
+                }
+            });
+        } else {
+           //Update the errorCount on the bottom-left of notifications icon
+            var notificationWindow = Ext.create('Ext.vcops.chrome.view.CollectionNotifications', {
+                id: 'notification-window-error-check'
+            });
+
+            notificationWindow.updateBadgeCount();
+        }
+
+        // check for application current state. If current state isn't (home, dashboard) remove splash screen after 2000 delay.
+        if (currentApplicationState && currentApplicationState.length > 1 && (currentApplicationState[1] === dashboardState && hasPrivilege("ui.home.dashboards.view"))) {
+            // splash screen will be removed later from dashboard.js after loading heavy items
+        } else {
+            setTimeout(function () {
+                Ext.getBody().unmask();
+            }, 2000);
+        }
+
+        var startKeyNavigationFunction = function(e, t) {
+            if (e.getKey() == e.TAB) {
+                Ext.getBody().addCls('key-navigation-activated');/*this class is used because focusing behaviour is not consistent at a time.*/
+                Ext.getBody().un('keydown', startKeyNavigationFunction);
+                Ext.getBody().on('mousedown', endKeyNavigationFunction);
+            }
+        };
+        var endKeyNavigationFunction =  function(e, t) {
+            if (e.type === "mousedown") {
+                Ext.getBody().removeCls('key-navigation-activated');/*this class is used because focusing behaviour is not consistent at a time.*/
+                Ext.getBody().on('keydown', startKeyNavigationFunction);
+                Ext.getBody().un('mousedown', endKeyNavigationFunction);
+            }
+        };
+        Ext.getBody().on('keydown', startKeyNavigationFunction);
+    }
+});
+
+
+Ext.define('Ext.vcops.chrome.Chrome', {
+});

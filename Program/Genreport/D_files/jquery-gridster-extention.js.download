@@ -1,0 +1,146 @@
+"use strict";
+/**
+ * This is to overwrite and fix Gridster bugs
+ * and/or extend Gridster plugin 
+ */
+;(function(window, undefined) {
+    var Gridster = window.Gridster,
+        fn,
+        fnDraggable,
+        $ = window.$ || window.jQuery;
+    
+    if (Gridster.prototype) {
+        fn = Gridster.prototype;
+    } else {
+        throw "Probably Gridster Extention is loaded before Gridster";
+    }
+
+    if (window.GridsterDraggable.prototype) {
+        fnDraggable = window.GridsterDraggable.prototype;
+    } else {
+        throw "Probably Draggable Extention is loaded before Gridster";
+    }
+
+    /**
+     * @overwrite
+     * Fix resize_api destroy and widgets Coords destroy 
+     * 
+     * Destroy this gridster by removing any sign of its presence, making it easy to avoid memory leaks
+     * 
+     * @method destroy
+     * @param {Boolean} remove If true, remove gridster from DOM.
+     * @return {Object} Returns the instance of the Gridster class.
+     */
+    fn.destroy = function(remove) {
+        var me = this;
+
+        me.$el.removeData('gridster');
+
+        // remove bound callback on window resize
+        $(window).unbind('.gridster');
+
+        if (me.drag_api) {
+            me.drag_api.destroy();
+        }
+
+        if (me.resize_api) {
+            me.resize_api.destroy();
+        }
+        
+        me.$widgets.each(function(i, w){
+            var $w = $(w);
+            $w.data("coords").destroy();
+            $w.children("."+me.resize_handle_class).remove();
+        });
+
+        me.remove_style_tags();
+
+        remove && me.$el.remove();
+
+        return me;
+    };
+
+    /**
+     * @overwrite
+     * Fix bug: Adding bigger widgets than min-rows, leads to widget overlapping for widgets under it
+     * 
+     * Add cell to the faux grid.
+     *
+     * @method add_faux_cell
+     * @param {Number} row The row for the new faux cell.
+     * @param {Number} col The col for the new faux cell.
+     * @return {Object} Returns the instance of the Gridster class.
+     */
+     fn.add_faux_cell = function(row, col) {
+         var coords = $({
+                         left: this.baseX + ((col - 1) * this.min_widget_width),
+                         top: this.baseY + (row -1) * this.min_widget_height,
+                         width: this.min_widget_width,
+                         height: this.min_widget_height,
+                         col: col,
+                         row: row,
+                         original_col: col,
+                         original_row: row
+                     }).coords();
+
+         if (!$.isArray(this.gridmap[col])) {
+             this.gridmap[col] = [];
+         }
+
+         // Vmware fix: this.gridmap can be not undefined as a result of just added widgets,
+         // setting these cells to false will break can_widget_go_up functioning well
+         this.gridmap[col][row] = this.gridmap[col][row] || false;
+         this.faux_grid.push(coords);
+
+         return this;
+     };
+
+    /**
+     * Disables single widget for resizing.
+     *
+     * @memberOf Gridster
+     * @param {Object} $widget The gridster widget which should be disabled for resizing.
+     */
+    fn.disableWidgetResize = function ($widget) {
+        var resizeHandler;
+        resizeHandler = $widget.children("."+this.resize_handle_class+":first");
+        if (resizeHandler.length) {
+            resizeHandler.hide();
+        }
+    };
+    
+    /**
+     * Enable single widget for resizing.
+     *
+     * @memberOf Gridster
+     * @param {Object} $widget The gridster widget which should be disabled for resizing.
+     */
+    fn.enableWidgetResize = function ($widget) {
+        var resizeHandler;
+        resizeHandler = $widget.children("."+this.resize_handle_class+":first");
+        if (resizeHandler.length) {
+            resizeHandler.show();
+        }
+    };
+
+    /**
+     * @overwrite
+     * Fix bug unable to select texts from widgets
+     *
+     * select_start event handler
+     *
+     * @method on_select_start
+     * @param {Object} e The event which is fired.
+     * @return {Boolean} Returns true or false.
+     */
+    fnDraggable.on_select_start = function(e) {
+        if (this.disabled) { return; }
+
+        if (this.ignore_drag(e)) {
+            return;
+        }
+        // Vmware fix: return false was disabling text selection in gridster panels
+        return true;
+    };
+
+})(this);

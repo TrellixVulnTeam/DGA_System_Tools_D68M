@@ -1,0 +1,534 @@
+!function() {
+    
+    // TODO
+    if (Ext.Updater) {
+        Ext.Updater.defaults.indicatorText = '<div class="loading-indicator">'+bundle['extjs.UpdateManager.defaults.indicatorText']+'</div>';
+    }
+
+    if (Ext.data && Ext.data.Types) {
+        Ext.data.Types.stripRe = /[\$,%]/g;
+    }
+
+    if (Ext.Date) {
+        Ext.Date.monthNames = [
+            bundle['extjs.monthNames.January'],
+            bundle['extjs.monthNames.February'],
+            bundle['extjs.monthNames.March'],
+            bundle['extjs.monthNames.April'],
+            bundle['extjs.monthNames.May'],
+            bundle['extjs.monthNames.June'],
+            bundle['extjs.monthNames.July'],
+            bundle['extjs.monthNames.August'],
+            bundle['extjs.monthNames.September'],
+            bundle['extjs.monthNames.October'],
+            bundle['extjs.monthNames.November'],
+            bundle['extjs.monthNames.December']
+        ];
+
+        Ext.Date.shortMonthNames = [
+            bundle['extjs.shortMonthNames.January'],
+            bundle['extjs.shortMonthNames.February'],
+            bundle['extjs.shortMonthNames.March'],
+            bundle['extjs.shortMonthNames.April'],
+            bundle['extjs.shortMonthNames.May'],
+            bundle['extjs.shortMonthNames.June'],
+            bundle['extjs.shortMonthNames.July'],
+            bundle['extjs.shortMonthNames.August'],
+            bundle['extjs.shortMonthNames.September'],
+            bundle['extjs.shortMonthNames.October'],
+            bundle['extjs.shortMonthNames.November'],
+            bundle['extjs.shortMonthNames.December']
+        ];
+
+        Ext.Date.getShortMonthName = function(month) {
+            return Ext.Date.shortMonthNames[month];
+        };
+
+        Ext.Date.monthNumbers = {
+            Jan: 0,
+            Feb: 1,
+            Mar: 2,
+            Apr: 3,
+            May: 4,
+            Jun: 5,
+            Jul: 6,
+            Aug: 7,
+            Sep: 8,
+            Oct: 9,
+            Nov: 10,
+            Dec: 11
+        };
+
+        Ext.Date.getMonthNumber = function(name) {
+            return Ext.Date.monthNumbers[name.substring(0, 1).toUpperCase() + name.substring(1, 3).toLowerCase()];
+        };
+
+        Ext.Date.dayNames = [
+            bundle['extjs.dayNames.Sunday'],
+            bundle['extjs.dayNames.Monday'],
+            bundle['extjs.dayNames.Tuesday'],
+            bundle['extjs.dayNames.Wednesday'],
+            bundle['extjs.dayNames.Thursday'],
+            bundle['extjs.dayNames.Friday'],
+            bundle['extjs.dayNames.Saturday']
+        ];
+
+        Ext.Date.getShortDayName = function(day) {
+            return Ext.Date.dayNames[day].substring(0, 3);
+        };
+
+        Ext.Date.parseCodes.S.s = "(?:st|nd|rd|th)";
+
+        Ext.Date.parseCodes.a = {
+            g: 1,
+            c: "if (/(" + bundle['extjs.AM'] + ")/i.test(results[{0}])) {\n"//initially there was bundle['extjs.am'], but in Japanese this is not translated, and regexp doesn't match
+                + "if (!h || h == 12) { h = 0; }\n"
+                + "} else { if (!h || h < 12) { h = (h || 0) + 12; }}",
+            s: "(" + bundle['extjs.am'] + "|" + bundle['extjs.pm']
+               + "|" + bundle['extjs.AM'] + "|" + bundle['extjs.PM']+")",
+            calcAtEnd: true
+        };
+
+        Ext.Date.parseCodes.A = {
+            g: 1,
+            c: "if (/(" + bundle['extjs.AM'] + ")/i.test(results[{0}])) {\n"//initially there was bundle['extjs.am'], but in Japanese this is not translated, and regexp doesn't match
+                + "if (!h || h == 12) { h = 0; }\n"
+                + "} else { if (!h || h < 12) { h = (h || 0) + 12; }}",
+            s: "(" + bundle['extjs.AM'] + "|" + bundle['extjs.PM']
+               + "|" + bundle['extjs.am'] + "|" + bundle['extjs.pm']+")",
+            calcAtEnd: true
+        };
+
+        Ext.Date.formatCodes.a = "(this.getHours() < 12 ? '" + bundle['extjs.am'] +"' : '" + bundle['extjs.pm'] + "')";
+        Ext.Date.formatCodes.A = "(this.getHours() < 12 ? '" + bundle['extjs.AM'] +"' : '" + bundle['extjs.PM'] + "')";
+    }
+
+    if (Ext.picker.Date) {
+        Ext.picker.Date.dayInitials = {};
+        Ext.picker.Date.dayInitials[bundle['extjs.dayNames.Sunday']] = bundle['extjs.dayInitials.Sunday'];
+        Ext.picker.Date.dayInitials[bundle['extjs.dayNames.Monday']] = bundle['extjs.dayInitials.Monday'];
+        Ext.picker.Date.dayInitials[bundle['extjs.dayNames.Tuesday']] = bundle['extjs.dayInitials.Tuesday'];
+        Ext.picker.Date.dayInitials[bundle['extjs.dayNames.Wednesday']] = bundle['extjs.dayInitials.Wednesday'];
+        Ext.picker.Date.dayInitials[bundle['extjs.dayNames.Thursday']] = bundle['extjs.dayInitials.Thursday'];
+        Ext.picker.Date.dayInitials[bundle['extjs.dayNames.Friday']] = bundle['extjs.dayInitials.Friday'];
+        Ext.picker.Date.dayInitials[bundle['extjs.dayNames.Saturday']] = bundle['extjs.dayInitials.Saturday'];
+
+        Ext.override(Ext.picker.Date, {
+            getDayInitial: function (value) {
+                return Ext.picker.Date.dayInitials[value];
+            }
+        });
+    }
+
+    if (Ext.MessageBox) {
+        Ext.MessageBox.buttonText = {
+            ok: bundle['extjs.MessageBox.buttonText.ok'],
+            cancel: bundle['extjs.MessageBox.buttonText.cancel'],
+            yes: bundle['extjs.MessageBox.buttonText.yes'],
+            no: bundle['extjs.MessageBox.buttonText.no']
+        };
+    }
+
+    /*
+    if (exists('Ext.util.Format')) {
+        Ext.apply(Ext.util.Format, {
+            thousandSeparator: ',',
+            decimalSeparator: '.',
+            currencySign: '$',
+            dateFormat: 'm/d/Y'
+        });
+    }
+    */
+    
+    if (Ext.form && Ext.form.field.VTypes) {
+        Ext.apply(Ext.form.field.VTypes, {
+            emailText    : bundle['extjs.form.VTypes.emailText'],
+            urlText      : bundle['extjs.form.VTypes.urlText'],
+            alphaText    : bundle['extjs.form.VTypes.alphaText'],
+            alphanumText : bundle['extjs.form.VTypes.alphanumText']
+        });
+    }
+
+    /*
+    Ext.define("Ext.view.View", {
+        override: "Ext.view.View",
+        emptyText: ""
+    });
+    */
+
+    Ext.define("Ext.grid.plugin.RowEditing", {
+        override: "Ext.grid.plugin.RowEditing",
+        saveBtnText  : bundle['extjs.grid.plugin.RowEditing.saveBtnText'],
+        cancelBtnText: bundle['extjs.grid.plugin.RowEditing.cancelBtnText'],
+        errorsText: bundle['extjs.grid.plugin.RowEditing.errorsText'],
+        dirtyText: bundle['extjs.grid.plugin.RowEditing.dirtyText']
+    });
+
+    // changing the msg text below will affect the LoadMask
+    Ext.define("Ext.view.AbstractView", {
+        override: "Ext.view.AbstractView",
+        loadingText: bundle['extjs.UpdateManager.defaults.indicatorText'],
+        msg: bundle['extjs.LoadMask.prototype.msg']
+    });
+
+    Ext.override(Ext.LoadMask, {
+        'msg' : bundle['main.loading']
+    });
+
+    Ext.define("Ext.picker.Date", {
+        override: "Ext.picker.Date",
+        todayText         : bundle['extjs.DatePicker.todayText'],
+        minText           : bundle['extjs.DatePicker.minText'],
+        maxText           : bundle['extjs.DatePicker.maxText'],
+        disabledDaysText  : "",
+        disabledDatesText : "",
+        monthNames        : Date.monthNames,
+        dayNames          : Date.dayNames,
+        nextText          : bundle['extjs.DatePicker.nextText'],
+        prevText          : bundle['extjs.DatePicker.prevText'],
+        monthYearText     : bundle['extjs.DatePicker.monthYearText'],
+        todayTip          : bundle['extjs.DatePicker.todayTip'],
+        format            : bundle['dateTimeFormatStrings.shortDateFormat'],
+        longDayFormat     : bundle['dateTimeFormatStrings.mediumDateFormat'],
+        monthYearFormat   : bundle['extjs.DatePicker.monthYearFormat']
+    });
+
+    Ext.define("Ext.picker.Month", {
+        override: "Ext.picker.Month",
+        okText: bundle['extjs.DatePicker.okText'],
+        cancelText: bundle['extjs.DatePicker.cancelText']
+    });
+
+    Ext.define("Ext.toolbar.Paging", {
+        override: "Ext.PagingToolbar",
+        beforePageText : bundle['extjs.PagingToolbar.beforePageText'],
+        afterPageText  : bundle['extjs.PagingToolbar.afterPageText'],
+        firstText      : bundle['extjs.PagingToolbar.firstText'],
+        prevText       : bundle['extjs.PagingToolbar.prevText'],
+        nextText       : bundle['extjs.PagingToolbar.nextText'],
+        lastText       : bundle['extjs.PagingToolbar.lastText'],
+        refreshText    : bundle['extjs.PagingToolbar.refreshText'],
+        displayMsg     : bundle['extjs.PagingToolbar.displayMsg'],
+        emptyMsg       : bundle['extjs.PagingToolbar.emptyMsg']
+    });
+
+    Ext.define("Ext.form.Basic", {
+        override: "Ext.form.Basic",
+        waitTitle: bundle['extjs.form.BasicForm.waitTitle']
+    });
+
+    Ext.define("Ext.form.field.Base", {
+        override: "Ext.form.field.Base",
+        invalidText: bundle['extjs.form.Field.invalidText']
+    });
+
+    Ext.define("Ext.form.field.Text", {
+        override: "Ext.form.field.Text",
+        minLengthText : bundle['extjs.form.TextField.minLengthText'],
+        maxLengthText : bundle['extjs.form.TextField.maxLengthText'],
+        blankText     : bundle['extjs.form.TextField.blankText'],
+        regexText     : "",
+        emptyText     : null
+    });
+
+    Ext.define("Ext.form.field.Number", {
+        override: "Ext.form.field.Number",
+        // decimalSeparator: ".",
+        // decimalPrecision: 2,
+        minText : bundle['extjs.form.NumberField.minText'],
+        maxText : bundle['extjs.form.NumberField.maxText'],
+        nanText : bundle['extjs.form.NumberField.nanText'],
+        negativeText : bundle['extjs.form.negativeText']
+    });
+
+    Ext.define("Ext.form.field.Date", {
+        override: "Ext.form.field.Date",
+        disabledDaysText  : bundle['extjs.form.DateField.disabledDaysText'],
+        disabledDatesText : bundle['extjs.form.DateField.disabledDatesText'],
+        minText           : bundle['extjs.form.DateField.minText'],
+        maxText           : bundle['extjs.form.DateField.maxText'],
+        invalidText       : bundle['extjs.form.DateField.invalidText']
+        // format            : "m/d/y",
+        // altFormats        : "m/d/Y|m-d-y|m-d-Y|m/d|m-d|md|mdy|mdY|d|Y-m-d",
+    });
+
+    Ext.define("Ext.form.field.ComboBox", {
+        override: "Ext.form.field.ComboBox",
+        valueNotFoundText: undefined
+    }, function() {
+        Ext.apply(Ext.form.field.ComboBox.prototype.defaultListConfig, {
+            loadingText: bundle['extjs.form.ComboBox.loadingText']
+        });
+    });
+
+    Ext.define("Ext.form.field.HtmlEditor", {
+        override: "Ext.form.field.HtmlEditor",
+        createLinkText: 'Please enter the URL for the link:'
+    }, function() {
+        Ext.apply(Ext.form.field.HtmlEditor.prototype, {
+            buttonTips: {
+                bold: {
+                    title: bundle['htmlEditor.bold.title'],
+                    text: bundle['htmlEditor.bold.text'],
+                    cls: Ext.baseCSSPrefix + 'html-editor-tip'
+                },
+                italic: {
+                    title: bundle['htmlEditor.italic.title'],
+                    text: bundle['htmlEditor.italic.text'],
+                    cls: Ext.baseCSSPrefix + 'html-editor-tip'
+                },
+                underline: {
+                    title: bundle['htmlEditor.underline.title'],
+                    text: bundle['htmlEditor.underline.text'],
+                    cls: Ext.baseCSSPrefix + 'html-editor-tip'
+                },
+                increasefontsize: {
+                    title: bundle['htmlEditor.increasefontsize.title'],
+                    text: bundle['htmlEditor.increasefontsize.text'],
+                    cls: Ext.baseCSSPrefix + 'html-editor-tip'
+                },
+                decreasefontsize: {
+                    title: bundle['htmlEditor.decreasefontsize.title'],
+                    text: bundle['htmlEditor.decreasefontsize.text'],
+                    cls: Ext.baseCSSPrefix + 'html-editor-tip'
+                },
+                backcolor: {
+                    title: bundle['htmlEditor.backcolor.title'],
+                    text: bundle['htmlEditor.backcolor.text'],
+                    cls: Ext.baseCSSPrefix + 'html-editor-tip'
+                },
+                forecolor: {
+                    title: bundle['htmlEditor.forecolor.title'],
+                    text: bundle['htmlEditor.forecolor.text'],
+                    cls: Ext.baseCSSPrefix + 'html-editor-tip'
+                },
+                justifyleft: {
+                    title: bundle['htmlEditor.justifyleft.title'],
+                    text: bundle['htmlEditor.justifyleft.text'],
+                    cls: Ext.baseCSSPrefix + 'html-editor-tip'
+                },
+                justifycenter: {
+                    title: bundle['htmlEditor.justifycenter.title'],
+                    text: bundle['htmlEditor.justifycenter.text'],
+                    cls: Ext.baseCSSPrefix + 'html-editor-tip'
+                },
+                justifyright: {
+                    title: bundle['htmlEditor.justifyright.title'],
+                    text: bundle['htmlEditor.justifyright.text'],
+                    cls: Ext.baseCSSPrefix + 'html-editor-tip'
+                },
+                insertunorderedlist: {
+                    title: bundle['htmlEditor.bulletList.title'],
+                    text: bundle['htmlEditor.bulletList.text'],
+                    cls: Ext.baseCSSPrefix + 'html-editor-tip'
+                },
+                insertorderedlist: {
+                    title: bundle['htmlEditor.numberedList.title'],
+                    text: bundle['htmlEditor.numberedList.text'],
+                    cls: Ext.baseCSSPrefix + 'html-editor-tip'
+                },
+                createlink: {
+                    title: bundle['htmlEditor.createLink.title'],
+                    text: bundle['htmlEditor.createLink.text'],
+                    cls: Ext.baseCSSPrefix + 'html-editor-tip'
+                },
+                sourceedit: {
+                    title: bundle['htmlEditor.sourceEdit.title'],
+                    text: bundle['htmlEditor.sourceEdit.text'],
+                    cls: Ext.baseCSSPrefix + 'html-editor-tip'
+                }
+            }
+        });
+    });
+
+    Ext.define("Ext.grid.header.Container", {
+        override: "Ext.grid.header.Container",
+        sortAscText  : bundle['extjs.grid.GridView.sortAscText'],
+        sortDescText : bundle['extjs.grid.GridView.sortDescText'],
+        columnsText  : bundle['extjs.grid.GridView.columnsText']
+    });
+
+    Ext.define("Ext.grid.locking.Lockable", {
+        override: "Ext.grid.locking.Lockable",
+        unlockText   : bundle['extjs.grid.locking.Lockable.unlockText'],
+        lockText     : bundle['extjs.grid.locking.Lockable.lockText']
+    });
+
+    /*
+    Ext.define("Ext.grid.GroupingFeature", {
+        override: "Ext.grid.GroupingFeature",
+        emptyGroupText : bundle['extjs.grid.GroupingView.emptyGroupText'],
+        groupByText    : bundle['extjs.grid.GroupingView.groupByText'],
+        showGroupsText : bundle['extjs.grid.GroupingView.showGroupsText']
+    });
+    */
+
+    Ext.define("Ext.grid.PropertyColumnModel", {
+        override: "Ext.grid.PropertyColumnModel",
+        nameText   : bundle['extjs.grid.PropertyColumnModel.nameText'],
+        valueText  : bundle['extjs.grid.PropertyColumnModel.valueText']
+        //dateFormat : "m/j/Y",
+        //trueText   : "true",
+        //falseText  : "false"
+    });
+
+    /*
+    Ext.define("Ext.grid.BooleanColumn", {
+        override: "Ext.grid.BooleanColumn",
+        trueText: "true",
+        falseText: "false",
+        undefinedText: '&#160;'
+    });
+
+    Ext.define("Ext.grid.NumberColumn", {
+        override: "Ext.grid.NumberColumn",
+        format: '0,000.00'
+    });
+
+    Ext.define("Ext.grid.DateColumn", {
+        override: "Ext.grid.DateColumn",
+        format: 'm/d/Y'
+    });
+    */
+
+    Ext.define("Ext.form.field.Time", {
+        override: "Ext.form.field.Time",
+        minText : bundle['extjs.form.TimeField.minText'],
+        maxText : bundle['extjs.form.TimeField.maxText'],
+        invalidText : bundle['extjs.form.TimeField.invalidText']
+        //format : "g:i A",
+        //altFormats : "g:ia|g:iA|g:i a|g:i A|h:i|g:i|H:i|ga|ha|gA|h a|g a|g A|gi|hi|gia|hia|g|H"
+    });
+
+    Ext.define("Ext.form.CheckboxGroup", {
+        override: "Ext.form.CheckboxGroup",
+        blankText : bundle['extjs.form.CheckboxGroup.blankText']
+    });
+
+    Ext.define("Ext.grid.column.Action", {
+        override: "Ext.grid.column.Action",
+        menuText: '<i>' + bundle['extjs.grid.ActionColumn.menuText'] + '</i>'
+    });
+
+    Ext.define("Ext.form.RadioGroup", {
+        override: "Ext.form.RadioGroup",
+        blankText : bundle['extjs.form.RadioGroup.blankText']
+    });
+
+    Ext.override(Ext.form.field.File, {
+        buttonText : bundle['extjs.buttonUploadText']
+    });
+
+    Ext.define("Ext.grid.RowEditor", {
+        override: "Ext.grid.RowEditor",
+        errorsText : bundle['extjs.grid.RowEditor.errorsText'],
+        saveBtnText : bundle['extjs.grid.RowEditor.saveBtnText'],
+        cancelBtnText : bundle['extjs.grid.RowEditor.cancelBtnText']
+    });
+
+    // This is needed until we can refactor all of the locales into individual files
+    Ext.define("Ext.Component", {
+        override: "Ext.Component"
+    });
+
+    Ext.define("Ext.data.validator.Bound", {
+        override: "Ext.data.validator.Bound",
+        emptyMessage: bundle['extjs.data.validator.Bound']
+    });
+
+    Ext.define("Ext.data.validator.Email", {
+        override: "Ext.data.validator.Email",
+        message: bundle['extjs.data.validator.Email']
+    });
+
+    Ext.define("Ext.data.validator.Exclusion", {
+        override: "Ext.data.validator.Exclusion",
+        message: bundle['extjs.data.validator.Exclusion']
+    });
+
+    Ext.define("Ext.data.validator.Format", {
+        override: "Ext.data.validator.Format",
+        message: bundle['extjs.data.validator.Format']
+    });
+
+    Ext.define("Ext.data.validator.Inclusion", {
+        override: "Ext.data.validator.Inclusion",
+        message: bundle['extjs.data.validator.Inclusion']
+    });
+
+    Ext.define("Ext.data.validator.Length", {
+        override: "Ext.data.validator.Length",
+        minOnlyMessage: bundle['extjs.data.validator.Length.minOnlyMessage'],
+        maxOnlyMessage: bundle['extjs.data.validator.Length.maxOnlyMessage'],
+        bothMessage: bundle['extjs.data.validator.Length.bothMessage']
+    });
+
+    Ext.define("Ext.data.validator.Presence", {
+        override: "Ext.data.validator.Presence",
+        message: bundle['extjs.data.validator.Presence']
+    });
+
+    Ext.define("Ext.data.validator.Range", {
+        override: "Ext.data.validator.Range",
+        minOnlyMessage: bundle['extjs.data.validator.Range.minOnlyMessage'],
+        maxOnlyMessage: bundle['extjs.data.validator.Range.maxOnlyMessage'],
+        bothMessage: bundle['extjs.data.validator.Range.bothMessage'],
+        nanMessage: bundle['extjs.data.validator.Range.nanMessage']
+    });
+
+    Ext.define("Ext.grid.feature.Grouping", {
+        override: "Ext.grid.feature.Grouping",
+        emptyGroupText: bundle['extjs.grid.feature.Grouping.emptyGroupText'],
+        groupByText: bundle['extjs.grid.feature.Grouping.groupByText'],
+        showGroupsText: bundle['extjs.grid.feature.Grouping.showGroupsText'],
+        expandTip: bundle['extjs.grid.feature.Grouping.expandTip'],
+        collapseTip: bundle['extjs.grid.feature.Grouping.collapseTip']
+    });
+
+    Ext.define("Ext.window.MessageBox", {
+        override: "Ext.window.MessageBox",
+        buttonText: {
+            ok: bundle['extjs.MessageBox.buttonText.ok'],
+            cancel: bundle['extjs.MessageBox.buttonText.cancel'],
+            yes: bundle['extjs.MessageBox.buttonText.yes'],
+            no: bundle['extjs.MessageBox.buttonText.no']
+        }    
+    });
+
+    Ext.define("Ext.grid.filters.Filters", {
+        override: "Ext.grid.filters.Filters",
+        menuFilterText: bundle['extjs.grid.filters.Filters']
+    });
+
+    Ext.define("Ext.grid.filters.filter.Boolean", {
+        override: "Ext.grid.filters.filter.Boolean",
+        yesText: bundle['extjs.grid.filters.filter.Boolean.yesText'],
+        noText: bundle['extjs.grid.filters.filter.Boolean.noText']
+    });
+
+    Ext.define("Ext.grid.filters.filter.Date", {
+        override: "Ext.grid.filters.filter.Date",
+        fields: {
+            lt: {text: bundle['extjs.grid.filters.filter.Date.fields.lt']},
+            gt: {text: bundle['extjs.grid.filters.filter.Date.fields.gt']},
+            eq: {text: bundle['extjs.grid.filters.filter.Date.fields.eq']}
+        },
+        // Defaults to Ext.Date.defaultFormat
+        dateFormat: null
+    });
+
+    Ext.define("Ext.grid.filters.filter.List", {
+        override: "Ext.grid.filters.filter.List",
+        loadingText: bundle['extjs.grid.filters.filter.List']
+    });
+
+    Ext.define("Ext.grid.filters.filter.Number", {
+        override: "Ext.grid.filters.filter.Number",
+        emptyText: bundle['extjs.grid.filters.filter.Number']
+    });
+
+    Ext.define("Ext.grid.filters.filter.String", {
+        override: "Ext.grid.filters.filter.String",
+        emptyText: bundle['extjs.grid.filters.filter.String']
+    });
+}();

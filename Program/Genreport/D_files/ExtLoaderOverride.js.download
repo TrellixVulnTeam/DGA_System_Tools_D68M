@@ -1,0 +1,41 @@
+(function () {
+    var Loader = Ext.Loader;
+
+    // detecting if this code is running first time or not
+    if (Loader.xExecutorCache) {
+        return;
+    }
+
+    // the cache is map of path to its executor(a function containing the code of that file)
+    Loader.xExecutorCache = {};
+    // a method for adding scripts to cache
+    Loader.addScriptsWithExecutors = function (scrpitsWithExecutors) {
+        Ext.apply(Loader.xExecutorCache, scrpitsWithExecutors);
+    };
+    // a method for getting executor from the cache
+    Loader.getExecutor = function (path) {
+        return Loader.xExecutorCache[path] || null;
+    };
+
+    // storing that original loader function for the cases
+    // when any of scripts isn't found in the cache
+    Loader.oldLoadScripts = Loader.loadScripts;
+
+    Loader.loadScripts = function (params) {
+        // filtering urls to leave only those files which were not cached.
+        params.url = params.url.filter(function (url) {
+            var executor = Loader.getExecutor(url);
+
+            if (executor) {
+                // calling executor of files found in the cache.
+                executor();
+            }
+
+            // removing all those which were found in the cache
+            return !executor;
+        });
+
+        // loading the other files
+        return Loader.oldLoadScripts(params);
+    };
+}());

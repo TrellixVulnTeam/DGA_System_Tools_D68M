@@ -1,0 +1,145 @@
+Ext.ns('Ext.app');
+
+Ext.ns('Ext.vcops');
+
+Ext.app.REMOTING_API = {
+  "url" : "/ui/vcops/services/router",
+  "namespace" : "Ext.vcops",
+  "type" : "remoting",
+  "actions" : {
+    "viewFilterController" : [ {
+      "name" : "getFilterMetadata",
+      "len" : 1
+    } ],
+    "reportServiceController" : [ {
+      "name" : "getReportDefinitionThumbnails",
+      "len" : 1
+    }, {
+      "name" : "isReportDefinitionEmpty",
+      "params" : [ "reportDefinitionId" ]
+    }, {
+      "name" : "getDefaultCoverImage",
+      "len" : 0
+    }, {
+      "name" : "getReportDefinitionThumbnailsById",
+      "len" : 1
+    }, {
+      "name" : "getByViewIds",
+      "len" : 1
+    }, {
+      "name" : "runReport",
+      "params" : [ "reportDefId", "resourceRef" ]
+    }, {
+      "name" : "setDefaultCoverImage",
+      "len" : 1
+    }, {
+      "name" : "getReportDefinitionNameById",
+      "len" : 1
+    }, {
+      "name" : "saveOrUpdateReportDefinition",
+      "len" : 1
+    }, {
+      "name" : "runReportForVsphereWorld",
+      "params" : [ "reportDefId" ]
+    }, {
+      "name" : "isResourceApplicable",
+      "params" : [ "reportDefinitionId", "resourceRef" ]
+    }, {
+      "name" : "canBeImpersonated",
+      "params" : [ "userId" ]
+    }, {
+      "name" : "getReportDataById",
+      "len" : 1
+    }, {
+      "name" : "deleteReportDefinitions",
+      "params" : [ "reportDefIds" ]
+    } ],
+    "viewServiceController" : [ {
+      "name" : "uploadImage",
+      "len" : 0,
+      "formHandler" : true
+    }, {
+      "name" : "getGroupedViewDefinitionThumbnails",
+      "len" : 0
+    }, {
+      "name" : "getResourceContextReferenceById",
+      "len" : 1
+    }, {
+      "name" : "isResourceApplicable",
+      "params" : [ "resourceRef", "viewDefinitionCreationData" ]
+    }, {
+      "name" : "deleteView",
+      "len" : 1
+    }, {
+      "name" : "removeChartFromCache",
+      "len" : 1
+    }, {
+      "name" : "getView",
+      "params" : [ "resourceRef", "viewDefinitionId", "controls", "isAsc", "columnIndex" ]
+    }, {
+      "name" : "getViewDataById",
+      "len" : 1
+    }, {
+      "name" : "getMetricDetails",
+      "len" : 2
+    }, {
+      "name" : "getUnits",
+      "len" : 1
+    }, {
+      "name" : "validateTransformationExpression",
+      "params" : [ "expression" ]
+    }, {
+      "name" : "getLivePreview",
+      "params" : [ "resourceRef", "creationData", "controls", "isAsc", "columnIndex" ]
+    }, {
+      "name" : "renderChart",
+      "params" : [ "chartData", "width", "height", "currentDate", "colorScheme" ]
+    }, {
+      "name" : "getViewDateRange",
+      "params" : [ "controls" ]
+    }, {
+      "name" : "getViewDefinitionThumbnails",
+      "len" : 1
+    }, {
+      "name" : "saveOrUpdateViewDefinition",
+      "len" : 1
+    }, {
+      "name" : "getViewThumbnails",
+      "len" : 1
+    }, {
+      "name" : "exportViewAsCSV",
+      "params" : [ "resourceRef", "viewDefinitionId", "controls" ]
+    } ],
+    "reportScheduleController" : [ {
+      "name" : "getTimeZones",
+      "len" : 0
+    }, {
+      "name" : "getById",
+      "len" : 1
+    }, {
+      "name" : "getByReportId",
+      "len" : 1
+    }, {
+      "name" : "saveOrUpdate",
+      "len" : 1
+    }, {
+      "name" : "deleteSchedule",
+      "len" : 1
+    } ],
+    "uploadContentController" : [ {
+      "name" : "uploadFile",
+      "len" : 0,
+      "formHandler" : true
+    }, {
+      "name" : "setMaxUploadSize",
+      "len" : 0
+    } ],
+    "reportController" : [ {
+      "name" : "getReports",
+      "len" : 1
+    }, {
+      "name" : "deleteReportInstances",
+      "params" : [ "reportIds" ]
+    } ]
+  }
+};

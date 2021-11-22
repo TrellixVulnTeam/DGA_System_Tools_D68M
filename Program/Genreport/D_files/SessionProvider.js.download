@@ -1,0 +1,151 @@
+/**
+ * Copyright 2013 VMware, Inc.  All rights reserved. -- VMware Confidential
+ */
+Ext.define('Ext.state.SessionProvider', {
+
+    extend : 'Ext.state.Provider',
+
+    constructor : function(config) {
+        this.stateCache = {};
+        this.transferStateTask = new Ext.util.DelayedTask(this.transferStates);
+        this.transferring = false;
+
+        this.removeStateCache = [];
+        this.removeStateTask = new Ext.util.DelayedTask(this.removeStates);
+        this.removing = false;
+        this.prefix = '';
+
+        this.callParent(arguments);
+        this.state = this.readStates(config.state);
+    },
+
+    // private
+    set : function(name, value, scope) {
+        if (scope && scope.getId) {
+            name = (name + '_' + scope.getId());
+        }
+        if (typeof value == "undefined" || value === null) {
+            this.clear(name);
+            return;
+        }
+        this.setStateValue(name, value);
+        this.callParent(arguments);
+    },
+    
+    // private
+    setNow : function(name, value, async, scope) {
+        if (scope && scope.getId) {
+            name = (name + '_' + scope.getId());
+        }
+        if (typeof value == "undefined" || value === null) {
+            this.clear(name);
+            return;
+        }
+        this.setStateValue(name, value, async);
+    },
+
+    get : function(name, defaultValue, scope) {
+        if (scope && scope.getId) {
+            name = (name + '_' + scope.getId());
+        }
+        return this.callParent(arguments);
+    },
+
+    // private
+    clear : function(name) {
+        this.clearStateValue(name);
+        this.callParent(arguments);
+    },
+
+    // private
+    readStates : function(state) {
+        var states = {};
+        if (state != null) {
+            for (var k in state) {
+                if (typeof state[k] == 'string') {
+                    states[k] = this.decodeValue(state[k]);
+                }
+            }
+        }
+        return states;
+    },
+
+    // private
+    setStateValue : function(name, value, async) {
+        this.stateCache[(this.prefix + name)] = this.encodeValue(value);
+        if (async == null || async) {
+            this.transferStateTask.delay(1000, null, this);
+        } else {
+            this.transferStates(async);
+        }
+    },
+
+    // private
+    clearStateValue : function(name) {
+        this.removeStateCache.push({name: (this.prefix + name)});
+        this.removeStateTask.delay(1000, null, this);
+    },
+
+    // private
+    transferStates : function(async) {
+        if (!this.transferring) {
+            var states = [];
+            for (var stateName in this.stateCache) {
+                states.push({name: stateName, value: this.stateCache[stateName]});
+            }
+            this.stateCache = {};
+            if (anonymousUser) {
+                return;
+            }
+            this.transferring = true;
+            Ext.Ajax.request({
+                url: 'stateManager.action',
+                params: {mainAction: 'storeState', states: Ext.encode(states), pageKey: this.pageKey},
+                disableCaching: true,
+                scope: this,
+                async: (async == null ? true : async),
+                method: 'POST',
+                success: function(response, options) {
+                    var responseText = response.responseText;
+                    this.transferring = false;
+                }
+            });
+        } else {
+            // If state is in process of transferring, try again later.
+            this.transferStateTask.delay(1500, null, this);
+        }
+    },
+
+    // private
+    removeStates : function() {
+        if (!this.removing) {
+            var stateNames = this.removeStateCache.slice(0);
+            this.removeStateCache = [];
+            if (anonymousUser) {
+                return;
+            }
+            this.removing = true;
+            Ext.Ajax.request({
+                url: 'stateManager.action',
+                params: {mainAction: 'removeState', names: Ext.encode(stateNames), pageKey: this.pageKey},
+                disableCaching: true,
+                scope: this,
+                method: 'POST',
+                success: function(response, options) {
+                    var responseText = response.responseText;
+                    this.removing = false;
+                }
+            });
+        } else {
+            // If state is in process of transferring, try again later.
+            this.removeStateTask.delay(1500, null, this);
+        }
+    },
+
+    exist : function(name) {
+        if (name != null && this.state != null && this.state[name] != null) {
+            return true;
+        }
+        return false;
+    }
+});

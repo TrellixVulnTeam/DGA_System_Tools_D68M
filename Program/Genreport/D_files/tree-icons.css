@@ -1,0 +1,84 @@
+.topologyTree .text,.topologyTree .x-tree-icon-parent .text {
+  background-image: url('../tmp/resources/images/mocks/metricNode_folder.png') !important;
+  background-repeat: no-repeat;
+}
+
+.cluster,.x-tree-icon-parent .cluster {
+  background-image: url('../images/vsphere/16x16/cluster.png') !important;
+  background-repeat: no-repeat;
+}
+
+.customgroup,.x-tree-icon-parent .customgroup {
+  background-image: url('../images/vsphere/16x16/group.png') !important;
+  background-repeat: no-repeat;
+}
+
+.adapterInstance,.x-tree-icon-parent .adapterInstance {
+    background-image: url('../images/vsphere/16x16/adapterInstance.png') !important;
+    background-repeat: no-repeat;
+}
+
+.application,.x-tree-icon-parent .application {
+  background-image: url('../images/vsphere/16x16/application.png') !important;
+  background-repeat: no-repeat;
+}
+
+.datacenter,.x-tree-icon-parent .datacenter {
+  background-image: url('../images/vsphere/16x16/dc.png') !important;
+  background-repeat: no-repeat;
+}
+
+.datastore,.x-tree-icon-parent .datastore {
+  background-image: url('../images/vsphere/16x16/datastore.png') !important;
+  background-repeat: no-repeat;
+}
+
+.host,.x-tree-icon-parent .host {
+  background-image: url('../images/vsphere/16x16/host.png') !important;
+  background-repeat: no-repeat;
+}
+
+.vm,.x-tree-icon-parent .vm {
+  background-image: url('../images/vsphere/16x16/vm.png') !important;
+  background-repeat: no-repeat;
+}
+
+.world,.x-tree-icon-parent .world {
+  background-image: url('../images/vsphere/16x16/world.png') !important;
+  background-repeat: no-repeat;
+}
+
+.san,.x-tree-icon-parent .san {
+  background-image: url('../images/vsphere/16x16/san.png') !important;
+  background-repeat: no-repeat;
+}
+
+.datastore-cluster,.x-tree-icon-parent .datastore-cluster {
+  background-image: url('../images/vsphere/16x16/datastore-cluster.png') !important;
+  background-repeat: no-repeat;
+}
+
+.emc-vnx,.x-tree-icon-parent .emc-vnx {
+  background-image: url('../tmp/resources/images/icons/resource/16x16/emc-vnx.png') !important;
+  background-repeat: no-repeat;
+}
+
+.lun,.x-tree-icon-parent .lun {
+  background-image: url('../tmp/resources/images/icons/resource/16x16/lun.png') !important;
+  background-repeat: no-repeat;
+}
+
+.ibm,.x-tree-icon-parent .ibm {
+  background-image: url('../tmp/resources/images/icons/resource/16x16/ibm.png') !important;
+  background-repeat: no-repeat;
+}
+
+.array,.x-tree-icon-parent .array {
+  background-image: url('../tmp/resources/images/icons/resource/16x16/array.png') !important;
+  background-repeat: no-repeat;
+}
+
+.inventory,.x-tree-icon-parent .inventory {
+  background-image: url('../images/inventory.png') !important;
+  background-repeat: no-repeat;
+}

@@ -1,0 +1,1222 @@
+/**
+ * Copyright 2013 VMware, Inc.  All rights reserved. -- VMware Confidential
+ */
+Ext.define('Ext.vcops.DateRangePicker', {
+
+    extend: 'Ext.panel.Panel',
+
+    alias: 'widget.daterange',
+
+    showCurrentValue : false,
+
+    dateRangeExtendedView : false,
+
+    publishData : true,
+
+    drawLabels : true,
+
+    drawBtn : true,
+
+    showDashboardTime: false,
+
+    isTroubleshooting: false,
+
+    useUTC: false,
+
+    dateRangeExclusions: [], // specifies date ranges to exclude
+
+    statics: {
+        dashboardTime: 'dashboardTime'
+    },
+
+    /**
+     * @cfg {Object} previousPeriod
+     * @memberOf Ext.vcops.DateRangePicker
+     */
+    previousPeriod: {
+        /**
+         * The default value for timeFieldFrom to preselect, on dateFieldFrom selection.
+         * Designed for previousPeriodMode:true
+         */
+        timeFrom: null,
+
+        /**
+         * Time Diff in milliseconds, used in previousPeriodMode:true case
+         */
+        timeDiff: null
+    },
+
+    renderFields : function() {
+        var me = this;
+
+        this.dateRanges = [];
+        if (!this.previousPeriodMode) {
+            if (!this.futureDateMode) {
+                if (this.showDashboardTime) {
+                    this.dateRanges.push({name: bundle['daterange.dashboardTime'], value: Ext.vcops.DateRangePicker.dashboardTime});
+                }
+                for (var dateRange in dateRanges) {
+                    if ((dateRange == 'currentValue' && !this.showCurrentValue) ||
+                        this.dateRangeExclusions.indexOf(dateRange) !== -1) {
+                        continue;
+                    }
+                    if (this.isTroubleshooting && (dateRange == 'lastHour' || dateRange == 'last6Hour' || dateRange == 'last12Hour'
+                        || dateRange == 'last24Hour' || dateRange == 'last7Days')) {
+                        this.dateRanges.push({name: bundle['daterange.' + dateRange], value: dateRange});
+                    } else if (!this.isTroubleshooting) {
+                        this.dateRanges.push({name: bundle['daterange.' + dateRange], value: dateRange});
+                    }
+                }
+            } else {
+                for (var futureDateRange in futureDateRanges) {
+                    this.dateRanges.push({name: bundle['daterange.' + futureDateRange], value: futureDateRange});
+                }
+            }
+        } else {
+            for (var i = 1; i <= 7; i++) {
+                this.dateRanges.push({name: bundle['metricChart.tbar.previousPeriod'+i], value: i});
+            }
+        }
+
+        this.dateFieldFrom = new Ext.form.field.Date({
+            width: 100,
+            editable: false,
+            format: bundle['dateTimeFormatStrings.shortDateFormat'],
+            listeners: {
+                scope: this,
+                select: function() {
+                    if (!this.dateRangeExtendedView) {
+                        this.clearDateRangeValue();
+                    }
+
+                    if (this.previousPeriodMode) {
+                        if(!this.timeFieldFrom.getRawValue()){
+                            this.timeFieldFrom.setValue(this.previousPeriod.timeFrom || this.timeFieldFrom.minValue);
+                        }
+                        this.setToFieldsForCurrentTimediff();
+                    } else {
+                        if(!this.timeFieldFrom.getRawValue()){
+                            this.timeFieldFrom.setValue(this.timeFieldFrom.minValue);
+                        }
+                        if (this.autosetToValue && this.dateFieldTo.getValue() == null) {
+                            var dateFrom = this.dateFieldFrom.getValue().getTime();
+                            this.dateFieldTo.setValue(new Date(dateFrom + 2592000000));
+                            this.timeFieldTo.setValue(this.timeFieldTo.maxValue);
+                        }
+                        this.publishTimeDiff();
+                    }
+                    if (this.dateRangeExtendedView && !this.drawBtn) {
+                        this.publishValues();
+                    }
+                }
+            }
+        });
+        this.timeFieldFrom = new Ext.form.field.Time({
+            minValue: Ext.Date.parse('00:00', 'H:i'),
+            maxValue: Ext.Date.parse('23:55', 'H:i'),
+            format: bundle['dateTimeFormatStrings.shortTimeFormat'],
+            editable: false,
+            increment: 5,
+            width: 100,
+            listConfig: {
+                minWidth: 100,
+                maxWidth: 100
+            },
+            listeners: {
+                scope: this,
+                select: function() {
+                    if (this.previousPeriodMode) {
+                        this.setToFieldsForCurrentTimediff();
+                    }
+                    this.publishTimeDiff();
+
+                    if (this.dateRangeExtendedView && !this.drawBtn) {
+                        this.publishValues();
+                    }
+                }
+            }
+        });
+
+        this.dateFieldTo = new Ext.form.field.Date({
+            width: 100,
+            editable: false,
+            format: bundle['dateTimeFormatStrings.shortDateFormat'],
+            listeners: {
+                scope: this,
+                select: function() {
+                    if (!this.dateRangeExtendedView) {
+                        this.clearDateRangeValue();
+                    }
+                    this.timeFieldTo.setValue(this.timeFieldTo.maxValue);
+
+                    this.publishTimeDiff();
+
+                    if (this.dateRangeExtendedView && !this.drawBtn) {
+                        this.publishValues();
+                    }
+                }
+            }
+        });
+        this.timeFieldTo = new Ext.form.field.Time({
+            minValue: Ext.Date.parse('00:00', 'H:i'),
+            maxValue: Ext.Date.parse('23:55', 'H:i'),
+            format: bundle['dateTimeFormatStrings.shortTimeFormat'],
+            editable: false,
+            increment: 5,
+            width: 100,
+            listConfig: {
+                minWidth: 100,
+                maxWidth: 100
+            },
+            listeners: {
+                scope: this,
+                select: function() {
+                    this.publishTimeDiff();
+
+                    if (this.dateRangeExtendedView && !this.drawBtn) {
+                        this.publishValues();
+                    }
+                }
+            }
+        });
+
+        this.okButton = new Ext.button.Button({
+            text: bundle['dateRangePicker.go'],
+            cls: 'btn btn-primary btn-sm',
+            width: 100,
+            padding: 0,
+            margin: '5 0 0 0',
+            scope: this,
+            handler: this.publishValues
+        });
+
+        if (!this.dateRangeExtendedView) {
+            this.dateRangeCombo = Ext.create((this.previousPeriodMode ? 'Ext.vcops.TwinComboBox' : 'Ext.form.field.ComboBox'), {
+                store: Ext.create('Ext.data.Store', {
+                    data: this.dateRanges,
+                    proxy: {
+                        type: 'memory',
+                        reader: {
+                            type: 'json'
+                        }
+                    },
+                    fields: ['name', 'value'],
+                    autoLoad: true
+                }),
+                queryMode: 'local',
+                editable: false,
+                displayField: 'name',
+                valueField: 'value',
+                value: (!this.allowEmpty ? this.defaultDateRange : null),
+                emptyText: bundle['main.notSelected'],
+                width: 210,
+                listConfig: {
+                    minWidth: 210,
+                    maxWidth: 210
+                },
+                listeners: {
+                    scope: this,
+                    change: function(combo, newValue, oldValue, eOpts) {
+                        if (newValue != null) {
+                            this.dateFieldFrom.setValue(null);
+                            this.dateFieldTo.setValue(null);
+                            this.timeFieldFrom.clearValue();
+                            this.timeFieldTo.clearValue();
+
+                            var validationMsgContainer = document.getElementById('validationMsg_'+this.ns);
+                            if (validationMsgContainer != null) {
+                                Ext.get(validationMsgContainer).up('.alert-danger').hide();
+                                validationMsgContainer.innerHTML = '&nbsp;';
+                            }
+
+                            // We need to publish this event for metric chart date picker cases
+                            if (!this.previousPeriodMode) {
+                                this.fireEvent('dateRangeSelect', this, {dateRange: dateRange});
+                            }
+                        }
+                    }
+                },
+                colspan: (this.drawLabels == null || this.drawLabels ? 4 : 3)
+            });
+        } else {
+            this.countField = Ext.create("Ext.form.field.Number", {
+                value: 7,
+                minValue: 1,
+                maxValue: 999,
+                allowExponential: false,
+                width: 50,
+                margin: '0 5 0 0',
+                validator: function() {
+                    return me.countField.getValue() == null ? bundle['datePicker.countEmpty'] : true;
+                },
+                listeners: {
+                    scope: this,
+                    change: function(numberField, newValue, oldValue, eOpts) {
+                        if (newValue != null) {
+                            this.unitCombo.validate();
+
+                            if (this.dateRangeExtendedView && !this.drawBtn) {
+                                this.publishValues();
+                            }
+                        }
+                    }
+                }
+            });
+
+            this.unitCombo = Ext.create("Ext.form.field.ComboBox", {
+                store: Ext.create('Ext.data.Store', {
+                    fields: ['name', 'title'],
+                    data : [
+                        {name: 'MINUTES', title: bundle['view.workspace.data.unit.MINUTES']},
+                        {name: 'HOURS', title: bundle['view.workspace.data.unit.HOURS']},
+                        {name: 'DAYS', title: bundle['view.workspace.data.unit.DAYS']},
+                        {name: 'WEEKS', title: bundle['view.workspace.data.unit.WEEKS']},
+                        {name: 'MONTHS', title: bundle['view.workspace.data.unit.MONTHS']},
+                        {name: 'YEARS', title: bundle['view.workspace.data.unit.YEARS']}
+                    ],
+                    autoLoad: true
+                }),
+                queryMode: 'local',
+                displayField: 'title',
+                valueField: 'name',
+                editable: false,
+                value: 'DAYS',
+                emptyText: '-- -- --',
+                width: 80,
+                validator: function() {
+                    return me.unitCombo.getValue() == null ? bundle['datePicker.unitEmpty'] : true;
+                },
+                listeners: {
+                    scope: this,
+                    change: function(combo, newValue, oldValue, eOpts) {
+                        if (newValue != null) {
+                            this.countField.validate();
+
+                            if (this.dateRangeExtendedView && !this.drawBtn) {
+                                this.publishValues();
+                            }
+                        }
+                    }
+                }
+            });
+
+            this.priorCountField = Ext.create("Ext.form.field.Number", {
+                value: null,
+                minValue: 1,
+                maxValue: 999,
+                allowExponential: false,
+                width: 50,
+                margin: '0 5 0 0',
+                validator: function() {
+                    return me.priorCountField.getValue() == null ? bundle['datePicker.countEmpty'] : true;
+                },
+                listeners: {
+                    scope: this,
+                    change: function(numberField, newValue, oldValue, eOpts) {
+                        if (newValue != null) {
+                            this.priorUnitCombo.validate();
+
+                            if (this.dateRangeExtendedView && !this.drawBtn) {
+                                this.publishValues();
+                            }
+                        }
+                    }
+                }
+            });
+
+            this.priorUnitCombo = Ext.create("Ext.form.field.ComboBox", {
+                store: Ext.create('Ext.data.Store', {
+                    fields: ['name', 'title'],
+                    data : [
+                        {name: 'HOURS', title: bundle['view.workspace.data.unit.HOURS']},
+                        {name: 'DAYS', title: bundle['view.workspace.data.unit.DAYS']},
+                        {name: 'WEEKS', title: bundle['view.workspace.data.unit.WEEKS']},
+                        {name: 'MONTHS', title: bundle['view.workspace.data.unit.MONTHS']},
+                        {name: 'YEARS', title: bundle['view.workspace.data.unit.YEARS']}
+                    ],
+                    autoLoad: true
+                }),
+                queryMode: 'local',
+                displayField: 'title',
+                valueField: 'name',
+                editable: false,
+                value: null,
+                emptyText: '-- -- --',
+                width: 80,
+                validator: function() {
+                    return me.priorUnitCombo.getValue() == null ? bundle['datePicker.unitEmpty'] : true;
+                },
+                listeners: {
+                    scope: this,
+                    change: function(combo, newValue, oldValue, eOpts) {
+                        if (newValue != null) {
+                            this.priorCountField.validate();
+
+                            if (this.dateRangeExtendedView && !this.drawBtn) {
+                                this.publishValues();
+                            }
+                        }
+                    }
+                }
+            });
+
+            this.relativeOption = Ext.create('Ext.panel.Panel', {
+                border: false,
+                layout: {type: 'vbox'},
+                formId: this.ns,
+                items: [{
+                    xtype: 'radiofield',
+                    checked: true,
+                    boxLabel: bundle['view.timeSettings.relative'],
+                    labelAlign: 'right',
+                    name: 'dateRangeOption',
+                    formId : this.ns,
+                    inputValue: 2
+                }, {
+                    xtype: 'panel',
+                    border: false,
+                    layout: {type: 'hbox'},
+                    items: [{
+                        xtype: 'label',
+                        text: bundle['view.timeSettings.last'],
+                        margin: '3 5 0 15'
+                    }, this.countField, this.unitCombo]
+                }],
+                getFormId : function() {
+                    return this.formId;
+                }
+            });
+
+            this.dateFieldFrom.setDisabled(true);
+            this.dateFieldTo.setDisabled(true);
+            this.timeFieldFrom.setDisabled(true);
+            this.timeFieldTo.setDisabled(true);
+            this.specificOption = Ext.create('Ext.panel.Panel', {
+                border: false,
+                layout: {type: 'vbox'},
+                margin: '20 0 0 0',
+                formId: this.ns,
+                items: [{
+                    xtype: 'radiofield',
+                    boxLabel: bundle['view.timeSettings.specific'],
+                    labelAlign: 'right',
+                    name : 'dateRangeOption',
+                    formId : this.ns,
+                    inputValue : 1
+                }, {
+                    xtype: 'panel',
+                    border: false,
+                    layout: {type: 'hbox'},
+                    items: [{
+                        xtype: 'label',
+                        text: bundle['view.timeSettings.startOn:'],
+                        margin: '3 5 0 15'
+                    }, {width:104, border: false, items: [this.dateFieldFrom]}, {html: '&nbsp;', border: false}, this.timeFieldFrom, {
+                        xtype: 'label',
+                        text: bundle['view.timeSettings.to'],
+                        margin: '3 7 0 5'
+                    }, {width:104, border: false, items: [this.dateFieldTo]}, {html: '&nbsp;', border: false}, this.timeFieldTo]
+                }],
+                getFormId : function() {
+                    return this.formId;
+                }
+            });
+
+            this.priorCountField.setDisabled(true);
+            this.priorUnitCombo.setDisabled(true);
+            this.absoluteOption = Ext.create('Ext.panel.Panel', {
+                border: false,
+                layout: {type: 'vbox'},
+                margin: '20 0 0 0',
+                formId: this.ns,
+                items: [{
+                    xtype: 'radiofield',
+                    boxLabel: bundle['view.timeSettings.absolute'],
+                    labelAlign: 'right',
+                    name: 'dateRangeOption',
+                    formId : this.ns,
+                    inputValue: 3
+                }, {
+                    xtype: 'panel',
+                    border: false,
+                    layout: {type: 'hbox'},
+                    items: [{
+                        xtype: 'label',
+                        text: bundle['view.timeSettings.prior'],
+                        margin: '3 5 0 15'
+                    }, this.priorCountField, this.priorUnitCombo]
+                }],
+                getFormId : function() {
+                    return this.formId;
+                }
+            });
+
+            this.dashboardTimeOption = Ext.create('Ext.panel.Panel', {
+                border: false,
+                layout: {type: 'vbox'},
+                margin: '20 0 0 0',
+                formId: this.ns,
+                items: [{
+                    xtype: 'radiofield',
+                    boxLabel: bundle['daterange.dashboardTime'],
+                    labelAlign: 'right',
+                    name: 'dateRangeOption',
+                    formId : this.ns,
+                    inputValue: 4
+                }],
+                getFormId : function() {
+                    return this.formId;
+                }
+            });
+
+            var items = [this.relativeOption, this.specificOption, this.absoluteOption];
+            if (this.showDashboardTime) {
+                items.push(this.dashboardTimeOption);
+            }
+            this.dateRangeOptionGroup = Ext.create('Ext.form.RadioGroup', {
+                //width: 415,
+                columns : 1,
+                colspan: 2,
+                vertical : true,
+                items : items,
+                listeners : {
+                    scope : this,
+                    change : function(radioGroup, newValue, oldValue, e) {
+                        var validationMsgContainer = document.getElementById('validationMsg_'+this.ns);
+                        var value = newValue.dateRangeOption;
+                        if (value == 1) {
+                            this.countField.setDisabled(true);
+                            this.unitCombo.setDisabled(true);
+                            this.priorCountField.setDisabled(true);
+                            this.priorUnitCombo.setDisabled(true);
+
+                            this.dateFieldFrom.setDisabled(false);
+                            this.dateFieldTo.setDisabled(false);
+                            this.timeFieldFrom.setDisabled(false);
+                            this.timeFieldTo.setDisabled(false);
+
+                            if (validationMsgContainer != null) {
+                                Ext.get(validationMsgContainer).up('.alert-danger').show();
+
+                                //var dateFrom = Ext.Date.format(this.dateFieldFrom.getValue(), 'd/m/Y');
+                                //var dateTo = Ext.Date.format(this.dateFieldTo.getValue(), 'd/m/Y');
+                                if (this.dateFieldFrom.getValue() == null || this.dateFieldTo.getValue() == null) {
+                                    validationMsgContainer.innerHTML = bundle['datePicker.specifyBothDates'];
+                                }
+                            }
+                        } else if(value == 2) {
+                            this.dateFieldFrom.setDisabled(true);
+                            this.dateFieldTo.setDisabled(true);
+                            this.timeFieldFrom.setDisabled(true);
+                            this.timeFieldTo.setDisabled(true);
+                            this.priorCountField.setDisabled(true);
+                            this.priorUnitCombo.setDisabled(true);
+
+                            this.countField.setDisabled(false);
+                            this.unitCombo.setDisabled(false);
+                            if (validationMsgContainer != null) {
+                                Ext.get(validationMsgContainer).up('.alert-danger').hide();
+                            }
+                        } else if(value == 3) {
+                            this.dateFieldFrom.setDisabled(true);
+                            this.dateFieldTo.setDisabled(true);
+                            this.timeFieldFrom.setDisabled(true);
+                            this.timeFieldTo.setDisabled(true);
+                            this.countField.setDisabled(true);
+                            this.unitCombo.setDisabled(true);
+
+                            this.priorCountField.setDisabled(false);
+                            this.priorUnitCombo.setDisabled(false);
+                            if (validationMsgContainer != null) {
+                                Ext.get(validationMsgContainer).up('.alert-danger').hide();
+                            }
+                        } else if (value == 4) {
+                            this.dateFieldFrom.setDisabled(true);
+                            this.dateFieldTo.setDisabled(true);
+                            this.timeFieldFrom.setDisabled(true);
+                            this.timeFieldTo.setDisabled(true);
+                            this.countField.setDisabled(true);
+                            this.unitCombo.setDisabled(true);
+
+                            this.priorCountField.setDisabled(true);
+                            this.priorUnitCombo.setDisabled(true);
+                            if (validationMsgContainer != null) {
+                                Ext.get(validationMsgContainer).up('.alert-danger').hide();
+                            }
+                        }
+                        if (!this.drawBtn) {
+                            this.publishValues();
+                        }
+                    }
+                }
+            });
+        }
+    },
+
+    publishTimeDiff : function(initialRestore) {
+        if (!this.previousPeriodMode) {
+            var dateRange = this.getDateRange();
+            if(!dateRange) {
+                return;
+            }
+            var dateFrom = dateRange.dateFrom;
+            var timeFrom = dateRange.timeFrom;
+
+            var dateTo = dateRange.dateTo;
+            var timeTo = dateRange.timeTo;
+
+            if (dateFrom != null && timeFrom != null && dateTo != null && timeTo != null) {
+                dateFrom = Ext.Date.parse((dateFrom + ' ' + timeFrom), 'd/m/Y g:i A').getTime();
+                dateTo = Ext.Date.parse((dateTo + ' ' + timeTo), 'd/m/Y g:i A').getTime();
+                var timeDiff = (dateTo - dateFrom);
+                if (timeDiff >= 0) {
+                    if (initialRestore) {
+                        Ext.defer(this.fireDateRangeSelect, 1500, this, [timeDiff, initialRestore]);
+                    } else {
+                        this.fireDateRangeSelect(timeDiff);
+                    }
+                }
+            }
+        }
+    },
+
+    fireDateRangeSelect : function(timeDiff, initialRestore) {
+        this.fireEvent('dateRangeSelect', this, {timeDiff: timeDiff, initialRestore: initialRestore});
+    },
+
+    isDashboardTime : function() {
+        if (this.dateRangeExtendedView) {
+            return this.dateRangeOptionGroup && this.dateRangeOptionGroup.getChecked()[0].modelValue == 4;
+        }
+        return this.dateRangeCombo && this.dateRangeCombo.getValue() == Ext.vcops.DateRangePicker.dashboardTime;
+    },
+
+    getDateRange : function() {
+        var validationMsgContainer = document.getElementById('validationMsg_'+this.ns);
+        if (validationMsgContainer != null) {
+            Ext.get(validationMsgContainer).up('.alert-danger').hide();
+            validationMsgContainer.innerHTML = '&nbsp;';
+        }
+
+        var dateRangeValue;
+        if (this.dateRangeExtendedView) {
+            var value = this.dateRangeOptionGroup.getValue();
+            if (value.dateRangeOption == 2) {
+                var unit = this.unitCombo.getValue();
+                var count = this.countField.getValue();
+                if (unit != null && count != null) {
+                    dateRangeValue = {timeInterval: {unit: unit, count: count, advancedTimeMode: false}};
+                } else {
+                    if (validationMsgContainer != null) {
+                        Ext.get(validationMsgContainer).up('.alert-danger').show();
+                        validationMsgContainer.innerHTML = bundle['datePicker.specifyRange'];
+                    }
+                    return;
+                }
+
+            } else if (value.dateRangeOption == 3) {
+                var priorUnit = this.priorUnitCombo.getValue();
+                var priorCount = this.priorCountField.getValue();
+                if (priorUnit != null && priorCount != null) {
+                    dateRangeValue = {timeInterval: {priorUnit: priorUnit, priorCount: priorCount, advancedTimeMode: false}};
+                } else {
+                    if (validationMsgContainer != null) {
+                        Ext.get(validationMsgContainer).up('.alert-danger').show();
+                        validationMsgContainer.innerHTML = bundle['datePicker.specifyRange'];
+                    }
+                    return;
+                }
+            } else if (value.dateRangeOption == 4) {
+                return {name: bundle['daterange.dashboardTime'], value: Ext.vcops.DateRangePicker.dashboardTime};
+            }
+
+        } else {
+            var dateRange = this.dateRangeCombo.getValue();
+            dateRangeValue = dateRange != null ? {dateRange: dateRange, dateRangeText: this.dateRangeCombo.getRawValue()} : null;
+        }
+
+        // the date and time formats used here, and the date and time formats in WebUtils.java::getDateRange() must match
+        var dateFrom = Ext.Date.format(this.dateFieldFrom.getValue(), 'd/m/Y');
+        var dateTo = Ext.Date.format(this.dateFieldTo.getValue(), 'd/m/Y');
+
+        // cannot rely on Ext.Date.format to return AM or PM, as it will return the localized version of AM or PM.
+        var timeFrom = "";
+        if (this.timeFieldFrom.getValue() != null) {
+            timeFrom = Ext.Date.format(this.timeFieldFrom.getValue(), 'g:i') + (this.timeFieldFrom.getValue().getHours() < 12 ? " " + bundle['extjs.AM'] : " " + bundle['extjs.PM']);
+        }
+
+        var timeTo = "";
+        if (this.timeFieldTo.getValue() != null) {
+            timeTo = Ext.Date.format(this.timeFieldTo.getValue(), 'g:i') + (this.timeFieldTo.getValue().getHours() < 12 ? " " + bundle['extjs.AM'] : " " + bundle['extjs.PM']);
+        }
+
+        var returnObj = {dateRange: this.defaultDateRange};
+        if (dateRangeValue != null) {
+            if (this.dateRangeExtendedView && !this.countField.isValid()) {
+                return;
+            }
+            returnObj = dateRangeValue;
+            if (this.stateful_) {
+                var stateObj = {dateRange: dateRangeValue.dateRange, dateFrom: null, dateTo: null, timeFrom: null, timeTo: null, timeInterval: dateRangeValue.timeInterval};
+                State.set(this.stateId, Ext.encode(stateObj));
+            }
+        } else {
+            if ((dateFrom != null && dateFrom != '' && dateTo != null && dateTo != '') || (this.allowSingle && ((dateFrom != null && dateFrom != '') || (dateTo != null && dateTo != '')))) {
+                if (this.allowSingle && (!this.dateFieldFrom.getValue() || !this.dateFieldTo.getValue())) {
+                    if (validationMsgContainer != null) {
+                        Ext.get(validationMsgContainer).up('.alert-danger').show();
+                        validationMsgContainer.innerHTML = bundle['datePicker.specifyBothDates'];
+                    }
+                    return null;
+                }
+                var dateFromMillis = this.dateFieldFrom.getValue().getTime();
+                var dateToMillis = this.dateFieldTo.getValue().getTime();
+                var timeFromDate = this.timeFieldFrom.getValue();
+                var timeToDate = this.timeFieldTo.getValue();
+                var sevenDays = 604800000;
+
+                // calculate the time in millis for the summary of the date and time fields
+                var fromMillis = dateFromMillis + (timeFromDate.getMinutes() * 60 * 1000) + (timeFromDate.getHours() * 60 * 60 * 1000);
+                var toMillis = dateToMillis + (timeToDate.getMinutes() * 60 * 1000) + (timeToDate.getHours() * 60 * 60 * 1000);
+
+                // Use UTC time when searching logs i.e. remove timezone offset
+                if (this.useUTC) {
+                    var timezoneOffsetMs = new Date().getTimezoneOffset()*60000;
+                    fromMillis -= timezoneOffsetMs;
+                    toMillis -= timezoneOffsetMs
+                }
+                // Validate date range
+                if (dateFrom != null && dateTo != null) {
+                    if (dateFromMillis > dateToMillis) {
+                        if (validationMsgContainer != null) {
+                            Ext.get(validationMsgContainer).up('.alert-danger').show();
+                            validationMsgContainer.innerHTML = bundle['datePicker.incorrectDateRange'];
+                        }
+                        return;
+                    } else if (dateFromMillis == dateToMillis) {
+                        var timeFromMillis = timeFromDate.getTime();
+                        var timeToMillis = timeToDate.getTime();
+
+                        if (timeFromMillis > timeToMillis) {
+                            if (validationMsgContainer != null) {
+                                Ext.get(validationMsgContainer).up('.alert-danger').show();
+                                validationMsgContainer.innerHTML = bundle['datePicker.incorrectDateRange'];
+                            }
+                            return;
+                        }
+                    } else if ( this.isTroubleshooting && (dateToMillis - dateFromMillis >= sevenDays)) {
+                        if (validationMsgContainer != null) {
+                            Ext.get(validationMsgContainer).up('.alert-danger').show();
+                            validationMsgContainer.innerHTML = bundle['datePicker.exceedSevenDays'];
+                        }
+                        return;
+                    }
+                }
+                returnObj = {dateFrom: dateFrom, dateTo: dateTo, timeFrom: timeFrom, timeTo: timeTo, fromMillis: fromMillis, toMillis: toMillis};
+                if (this.stateful_) {
+                    var stateObj = {dateRange: null, dateFrom: dateFrom, dateTo: dateTo, timeFrom: timeFrom, timeTo: timeTo, timeFormatAM: bundle['extjs.AM'], timeFormatPM: bundle['extjs.PM']};
+                    State.set(this.stateId, Ext.encode(stateObj));
+                }
+            } else if (this.previousPeriodMode || this.allowEmpty) {
+                if (this.stateful_) {
+                    State.set(this.stateId, null);
+                }
+                return null;
+            } else if (validationMsgContainer != null) {
+                Ext.get(validationMsgContainer).up('.alert-danger').show();
+                validationMsgContainer.innerHTML = bundle['datePicker.specifyBothDates'];
+                return null;
+            } else {
+                this.setDateRangeValue(this.defaultDateRange, this.defaultTimeInterval);
+            }
+        }
+
+        return returnObj;
+    },
+
+    setDateRangeValue : function(dateRange, timeInterval) {
+        if (this.dateRangeExtendedView) {
+            if (!Ext.isEmpty(timeInterval)) {
+                if (timeInterval.count != null && timeInterval.unit != null) {
+                    this.countField.setValue(timeInterval.count);
+                    this.unitCombo.setValue(timeInterval.unit);
+                    this.clearAbsoluteDateRange();
+                } else {
+                    this.priorCountField.setValue(timeInterval.priorCount);
+                    this.priorUnitCombo.setValue(timeInterval.priorUnit);
+                    this.clearRelativeDateRange();
+                    this.dateRangeOptionGroup.setValue({dateRangeOption: 3});
+                }
+            }
+        } else {
+            this.dateRangeCombo.setValue(dateRange);
+        }
+    },
+
+    clearDateRangeValue : function() {
+        if (this.dateRangeExtendedView) {
+            this.clearRelativeDateRange();
+            this.clearAbsoluteDateRange();
+        } else {
+            this.dateRangeCombo.clearValue();
+            this.dateRangeCombo.clearInvalid();
+        }
+    },
+
+    clearRelativeDateRange : function() {
+        this.unitCombo.clearValue();
+        this.unitCombo.clearInvalid();
+        this.countField.setValue(null);
+        this.countField.clearInvalid();
+    },
+
+    clearAbsoluteDateRange : function() {
+        this.priorUnitCombo.clearValue();
+        this.priorUnitCombo.clearInvalid();
+        this.priorCountField.setValue(null);
+        this.priorCountField.clearInvalid();
+    },
+
+    getValue : function() {
+        var dateRange = this.getDateRange();
+        return this.getTimeInterval(dateRange);
+    },
+
+    getTimeInterval : function(dateRange) {
+        return dateRange != null ? (dateRange.timeInterval != null ? dateRange : {timeInterval: {startTime: dateRange.fromMillis, endTime: dateRange.toMillis, advancedTimeMode: false}}) : null;
+    },
+
+    publishValues : function() {
+        if (this.publishData && this.isValid()) {
+            var returnObj = this.getDateRange();
+            if (returnObj != null || this.allowEmpty) {
+                this.fireEvent('dateSelect', this, returnObj);
+            }
+        }
+    },
+
+    stateRestored : function(stateful, state, eOpts) {
+        var dateFrom;
+        var dateTo;
+        var timeFromString;
+        var timeFrom;
+        var timeToString;
+        var timeTo;
+
+        if (this.stateful_) {
+            var stateObj = State.get(this.stateId, '{}');
+            stateObj = Ext.decode(stateObj);
+
+            if (stateObj.dateFrom && stateObj.dateTo) {
+                // the state string is stored in localization unfriendly formats, and need to be converted into
+                // formats that work with the current locale.
+                dateFrom = Ext.Date.format(Ext.Date.parse(stateObj.dateFrom, 'd/m/Y'), bundle['dateTimeFormatStrings.shortDateFormat']);
+                dateTo = Ext.Date.format(Ext.Date.parse(stateObj.dateTo, 'd/m/Y'), bundle['dateTimeFormatStrings.shortDateFormat']);
+
+                // The state string stores AM or PM, but the parse method will look for the locale specific strings.
+                // AM and PM need to be replaced with the localized string or parse will fail.
+                timeFromString = stateObj.timeFrom.replace(stateObj.timeFormatAM, bundle['extjs.AM']).replace(stateObj.timeFormatPM, bundle['extjs.PM']);
+                timeToString = stateObj.timeTo.replace(stateObj.timeFormatAM, bundle['extjs.AM']).replace(stateObj.timeFormatPM, bundle['extjs.PM']);
+                timeFrom = Ext.Date.format(Ext.Date.parse(timeFromString, 'g:i A'), bundle['dateTimeFormatStrings.shortTimeFormat']);
+                timeTo = Ext.Date.format(Ext.Date.parse(timeToString, 'g:i A'), bundle['dateTimeFormatStrings.shortTimeFormat']);
+            }
+
+            this.setFieldsValues(stateObj.dateRange, dateFrom, dateTo, timeFrom, timeTo);
+
+            this.publishTimeDiff(true);
+        }
+    },
+
+    /**
+     * Value is a range object of the form
+     *   { dateRange: range}
+     * or
+     *   { dateFrom: string, dateTo: string, timeFrom: string, timeTo: string }
+     * or
+     *   { fromMillis: number, toMillis: number }
+     *
+     * Valid range matches the range names in the DateRange or FutureDateRange enums.
+     *
+     * Valid date and time strings are formatted using the date format strings
+     *    bundle['dateTimeFormatStrings.shortDateFormat']
+     *    bundle['dateTimeFormatStrings.shortTimeFormat']
+     *
+     */
+    setValue : function(value) {
+        if (value != null) {
+            var dateRange = value.dateRange;
+            var dateFrom = value.dateFrom;
+            var dateTo = value.dateTo;
+            var timeFrom = value.timeFrom;
+            var timeTo = value.timeTo;
+
+            var timeInterval = value.timeInterval;
+            if (timeInterval != null && !Ext.isEmpty(timeInterval) && timeInterval.startTime != null && timeInterval.endTime != null) {
+                var fromDate = new Date(timeInterval.startTime);
+                var toDate = new Date(timeInterval.endTime);
+                fromDate.setMinutes(Math.floor(fromDate.getMinutes() / 5) * 5);
+                toDate.setMinutes(Math.floor(toDate.getMinutes() / 5) * 5);
+                dateFrom = Ext.Date.format(fromDate, bundle['dateTimeFormatStrings.shortDateFormat']);
+                dateTo = Ext.Date.format(toDate, bundle['dateTimeFormatStrings.shortDateFormat']);
+                timeFrom = Ext.Date.format(fromDate, bundle['dateTimeFormatStrings.shortTimeFormat']);
+                timeTo = Ext.Date.format(toDate, bundle['dateTimeFormatStrings.shortTimeFormat']);
+            }
+
+            // TODO check this code?
+            if (value.fromMillis != null && value.toMillis != null) {
+                var fromDate = new Date(value.fromMillis);
+                var toDate = new Date(value.toMillis);
+                fromDate.setMinutes(Math.floor(fromDate.getMinutes() / 5) * 5);
+                toDate.setMinutes(Math.floor(toDate.getMinutes() / 5) * 5);
+                dateFrom = Ext.Date.format(fromDate, bundle['dateTimeFormatStrings.shortDateFormat']);
+                dateTo = Ext.Date.format(toDate, bundle['dateTimeFormatStrings.shortDateFormat']);
+                timeFrom = Ext.Date.format(fromDate, bundle['dateTimeFormatStrings.shortTimeFormat']);
+                timeTo = Ext.Date.format(toDate, bundle['dateTimeFormatStrings.shortTimeFormat']);
+            }
+            this.setFieldsValues(dateRange, dateFrom, dateTo, timeFrom, timeTo, timeInterval);
+        }
+    },
+
+    setFieldsValues : function(dateRange, dateFrom, dateTo, timeFrom, timeTo, timeInterval) {
+        if (this.dateRangeExtendedView && !this.drawBtn) {
+            this.publishData = false;
+        }
+        if (dateRange != null || (timeInterval != null && ((timeInterval.unit != null && timeInterval.count != null) || (timeInterval.priorUnit != null && timeInterval.priorCount != null)))) {
+            this.setDateRangeValue(dateRange, timeInterval);
+            this.dateFieldFrom.setValue(null);
+            this.dateFieldTo.setValue(null);
+            this.timeFieldFrom.setValue(null);
+            this.timeFieldTo.setValue(null);
+        } else if (dateFrom != null || dateTo != null) {
+            this.clearDateRangeValue();
+            this.dateFieldFrom.setValue(this.dateFieldFrom.rawToValue(dateFrom));
+            this.dateFieldTo.setValue(this.dateFieldTo.rawToValue(dateTo));
+            this.timeFieldFrom.setValue(this.timeFieldFrom.rawToValue(timeFrom));
+            this.timeFieldTo.setValue(this.timeFieldTo.rawToValue(timeTo));
+            if (this.dateRangeExtendedView) {
+                this.dateRangeOptionGroup.setValue({dateRangeOption: 1});
+            }
+        } else {
+            this.setDateRangeValue(this.defaultDateRange, this.defaultTimeInterval);
+            this.dateFieldFrom.setValue(null);
+            this.dateFieldTo.setValue(null);
+            this.timeFieldFrom.setValue(null);
+            this.timeFieldTo.setValue(null);
+        }
+        if (this.dateRangeExtendedView && !this.drawBtn) {
+            this.publishData = true;
+        }
+    },
+
+    setPreviousPeriod: function(previousPeriod, initialRestore) {
+        if (!this.dateRangeExtendedView) {
+            var timeDiff = previousPeriod.timeDiff;
+            if (timeDiff != null) {
+                this.dateRangeCombo.clearValue();
+
+                if (this.previousPeriodMode && !initialRestore) {
+                    this.dateFieldFrom.setValue(null);
+                    this.dateFieldTo.setValue(null);
+                    this.timeFieldFrom.clearValue();
+                    this.timeFieldTo.clearValue();
+
+                    var stateObj = {dateRange: null, dateFrom: null, dateTo: null, timeFrom: null, timeTo: null};
+                    State.set(this.stateId, Ext.encode(stateObj));
+                }
+            } else {
+                this.dateFieldFrom.setValue(null);
+                this.dateFieldTo.setValue(null);
+                this.timeFieldFrom.clearValue();
+                this.timeFieldTo.clearValue();
+
+                var stateObj = {dateRange: this.dateRangeCombo.getValue(), dateFrom: null, dateTo: null, timeFrom: null, timeTo: null};
+                State.set(this.stateId, Ext.encode(stateObj));
+            }
+
+            this.dateRangeCombo.setDisabled((timeDiff != null));
+            this.dateFieldFrom.setDisabled((timeDiff == null));
+            this.timeFieldFrom.setDisabled((timeDiff == null));
+
+            this.previousPeriod = previousPeriod;
+        }
+    },
+
+    isValid : function() {
+        var isValid = this.dateRangeExtendedView ? false : true;
+        var dateFrom = this.dateFieldFrom.getValue();
+        var dateTo = this.dateFieldTo.getValue();
+        var timeFrom = this.timeFieldFrom.getValue();
+        var timeTo = this.timeFieldTo.getValue();
+        var dateRangeOption = this.dateRangeOptionGroup ? this.dateRangeOptionGroup.getValue() : null;
+        if (this.dateRangeExtendedView && dateRangeOption && (dateRangeOption.dateRangeOption == 2 || dateRangeOption.dateRangeOption == 3 || dateRangeOption.dateRangeOption == 4)) {
+            if (dateRangeOption.dateRangeOption == 2) {
+                return this.countField.isValid() && this.unitCombo.isValid();
+            } else if (dateRangeOption.dateRangeOption == 3) {
+                return this.priorCountField.isValid() && this.priorUnitCombo.isValid();
+            } else if (dateRangeOption.dateRangeOption == 4) {
+                return true;
+            }
+        } else if (dateFrom != null && dateTo != null) {
+            isValid = ((dateTo.getTime()+timeTo.getTime()) >= (dateFrom.getTime()+timeFrom.getTime()));
+            var validationMsgContainer = document.getElementById('validationMsg_'+this.ns);
+            if (validationMsgContainer != null) {
+                if (isValid) {
+                    Ext.get(validationMsgContainer).up('.alert-danger').hide();
+                } else {
+                    Ext.get(validationMsgContainer).up('.alert-danger').show();
+                    validationMsgContainer.innerHTML = bundle['datePicker.incorrectDateRange'];
+                }
+            }
+            return isValid;
+        }
+        return isValid;
+    },
+
+    clearValues : function() {
+        this.clearDateRangeValue();
+        this.dateFieldFrom.setValue(null);
+        this.dateFieldTo.setValue(null);
+        this.timeFieldFrom.clearValue();
+        this.timeFieldTo.clearValue();
+    },
+
+    /**
+     * Keeps the time range (this.previousPeriod.timeDiff) between 'from' and 'to' date-times,
+     * setting corresponding values to this.dateFieldTo and this.timeFieldTo fields,
+     * calculated from this.dateFieldFrom and this.timeFieldFrom fields.
+     * Designed for this.previousPeriodMode case
+     *
+     * @memberOf Ext.vcops.DateRangePicker
+     * @return {Boolean} False - if this.dateFieldFrom or this.timeFieldFrom has no value, or no this.previousPeriod.timeDiff unexpectedly. True - otherwise.
+     */
+    setToFieldsForCurrentTimediff : function() {
+        var dateFieldFromValue = this.dateFieldFrom.getValue();
+        var timeFieldFromValue = this.timeFieldFrom.getValue();
+        if(!timeFieldFromValue || !dateFieldFromValue || !this.previousPeriod.timeDiff){
+            return false;
+        }
+        var dateFromTimestamp = dateFieldFromValue.getTime();
+        var timeFromTimestamp = (timeFieldFromValue.getMinutes() * 60 * 1000) + (timeFieldFromValue.getHours() * 60 * 60 * 1000);
+        var fromTimestamp = dateFromTimestamp + timeFromTimestamp;
+        var toTimestamp = fromTimestamp + this.previousPeriod.timeDiff;
+        var dateTo = new Date(toTimestamp);
+        this.dateFieldTo.setValue(dateTo);
+        // dateTo is a Date Object, representing the right 'to' moment,
+        // but timeField expects a Date counted from 1 Jan 2008
+        var timeTo = this.timeFieldTo.rawToValue(this.timeFieldTo.valueToRaw(dateTo));
+        this.timeFieldTo.setValue(timeTo);
+        return true;
+    },
+
+    /**
+     * @return {Array} A list of errors.
+     */
+    getErrors: function() {
+        var errors = [];
+        var value = this.dateRangeOptionGroup.getValue();
+        if (value.dateRangeOption == 2) {
+            if (!this.countField.isValid()) {
+                var countFieldErrors = this.countField.getErrors();
+                if (countFieldErrors.length > 0) {
+                    errors.push(countFieldErrors[0]);
+                }
+            }
+            if (!this.unitCombo.isValid()) {
+                var unitComboErrors = this.unitCombo.getErrors();
+                if (unitComboErrors.length > 0) {
+                    errors.push(unitComboErrors[0]);
+                }
+            }
+
+        } else if (value.dateRangeOption == 3) {
+            if (!this.priorCountField.isValid()) {
+                var priorCountFieldErrors = this.priorCountField.getErrors();
+                if (priorCountFieldErrors.length > 0) {
+                    errors.push(priorCountFieldErrors[0]);
+                }
+            }
+            if (!this.priorUnitCombo.isValid()) {
+                var priorUnitComboErrors = this.priorUnitCombo.getErrors();
+                if (priorUnitComboErrors.length > 0) {
+                    errors.push(priorUnitComboErrors[0]);
+                }
+            }
+
+        } else {
+            var validationMsgContainer = document.getElementById('validationMsg_'+this.ns);
+            if (validationMsgContainer != null && validationMsgContainer.innerHTML != '&nbsp;') {
+                Ext.get(validationMsgContainer).up('.alert-danger').show();
+                errors.push(validationMsgContainer.innerHTML);
+            }
+        }
+        if (this.durationError) {
+            errors.push(this.durationError);
+        }
+        return errors;
+    },
+
+    setError: function(errorMsg) {
+        if (errorMsg) {
+            this.durationError = errorMsg;
+            if (this.dateRangeExtendedView && (this.unitCombo.getValue() != null || this.priorUnitCombo.getValue() != null)) {
+                if (this.unitCombo.getValue() != null) {
+                    this.unitCombo.markInvalid(this.durationError);
+                    this.countField.markInvalid(this.durationError);
+                } else {
+                    this.priorUnitCombo.markInvalid(this.durationError);
+                    this.priorCountField.markInvalid(this.durationError);
+                }
+            } else if (!this.dateRangeExtendedView && this.dateRangeCombo.getValue() != null) {
+                this.dateRangeCombo.markInvalid(this.durationError);
+            } else {
+                this.dateFieldFrom.markInvalid(this.durationError);
+                this.dateFieldTo.markInvalid(this.durationError);
+            }
+        } else {
+            this.durationError = null;
+            if (this.dateRangeExtendedView && (this.unitCombo.getValue() != null || this.priorUnitCombo.getValue() != null)) {
+                if (this.unitCombo.getValue() != null) {
+                    this.unitCombo.clearInvalid();
+                    this.countField.clearInvalid();
+                } else {
+                    this.priorUnitCombo.clearInvalid();
+                    this.priorCountField.clearInvalid();
+                }
+            } else if (!this.dateRangeExtendedView && this.dateRangeCombo.getValue() != null) {
+                this.dateRangeCombo.clearInvalid();
+            } else {
+                this.dateFieldFrom.clearInvalid();
+                this.dateFieldTo.clearInvalid();
+            }
+        }
+    },
+
+    showHideCurrentValue : function(hide) {
+        var currentValue = 'currentValue';
+        var store = this.dateRangeCombo.getStore();
+        var index = store.find('value', currentValue);
+        if (index > -1) {
+            if (hide) {
+                store.removeAt(index, 1)
+            } else {
+                // First option is already a 'Current Value'.
+                return;
+            }
+        } else if (!hide) {
+            store.insert(0, {name: bundle['daterange.'+currentValue], value: currentValue});
+        }
+    },
+
+    initComponent : function() {
+        this.stateful_ = this.initialConfig.stateful_;
+        this.initialConfig.stateful = false;
+
+        this.defaultDateRange = (!this.previousPeriodMode ? (this.defaultDateRange ? this.defaultDateRange : (!this.futureDateMode ?'last30Days' : 'next30Days')) : null);
+        this.defaultTimeInterval = (this.defaultTimeInterval ? this.defaultTimeInterval : {unit: 'DAYS', count: 7});
+
+        this.ns = getNS();
+
+        this.renderFields();
+
+        var panelItems = [];
+        var drawLabels = this.drawLabels;
+        if (!this.dateRangeExtendedView) {
+            if (drawLabels) {
+                panelItems.push({html: Ext.util.Format.format('<span class="auxLabel" style="white-space: nowrap;">{0}&nbsp;</span>', (this.dateRangeExtendedView ? bundle["dateRangePicker.last:"] : bundle["dateRangePicker.range:"])), border: false, style: 'margin-bottom:3px'});
+            }
+
+            panelItems.push(this.dateRangeCombo);
+
+            if (drawLabels) {
+                panelItems.push({html: Ext.util.Format.format('<span class="auxLabel" style="white-space: nowrap;">{0}&nbsp;</span>', bundle["dateRangePicker.from:"]), border: false, style: 'margin-bottom:3px'});
+            }
+
+            panelItems.push({width:104, border: false, items:[this.dateFieldFrom]});
+            panelItems.push({html: '&nbsp;', border: false});
+            panelItems.push(this.timeFieldFrom);
+
+            if (drawLabels) {
+                panelItems.push({html: Ext.util.Format.format('<span class="auxLabel" style="white-space: nowrap;">{0}&nbsp;</span>', bundle["dateRangePicker.to:"]), border: false, style: 'margin-bottom:3px'});
+            }
+
+            panelItems.push({width:104, border: false, items:[this.dateFieldTo]});
+            panelItems.push({html: '&nbsp;', border: false});
+            panelItems.push(this.timeFieldTo);
+
+            panelItems.push({
+                xtype: 'container',
+                layout: 'fit',
+                html: '<div class="alert alert-danger alert-sm" style="visibility: hidden" role="alert">' +
+                    '<div class="alert-items">' +
+                    '<div class="alert-item static">'+
+                    '<div class="alert-icon-wrapper">'+
+                    '<clr-icon class="alert-icon" shape="exclamation-circle"></clr-icon>'+
+                    '</div>'+
+                    '<span id="validationMsg_'+this.ns+'" class="alert-text">&nbsp;</span>'+
+                    '</div></div>' +
+                    '</div>',
+                colspan: drawLabels ? 4 : 3
+            });
+        } else {
+            panelItems.push(this.dateRangeOptionGroup);
+            panelItems.push({
+                width: 300,
+                html: '<div class="alert alert-danger alert-sm" style="visibility: hidden" role="alert">' +
+                    '<div class="alert-items">' +
+                    '<div class="alert-item static">'+
+                    '<div class="alert-icon-wrapper">'+
+                    '<clr-icon class="alert-icon" shape="exclamation-circle"></clr-icon>'+
+                    '</div>'+
+                    '<span id="validationMsg_'+this.ns+'" class="alert-text">&nbsp;</span>'+
+                    '</div></div>' +
+                    '</div>',
+                colspan: 2,
+                border: false
+            });
+        }
+
+        if (this.drawBtn) {
+            panelItems.push({
+                border: false,
+                items: this.okButton,
+                colspan: drawLabels ? 4 : 3,
+                tdAttrs: {
+                    align: 'right'
+                }
+            });
+        }
+
+        if (this.previousPeriodMode) {
+            this.dateFieldFrom.setDisabled(true);
+            this.timeFieldFrom.setDisabled(true);
+            this.dateFieldTo.setDisabled(true);
+            this.timeFieldTo.setDisabled(true);
+        } else if (this.disableTimePick) {
+            this.timeFieldFrom.setDisabled(true);
+            this.timeFieldTo.setDisabled(true);
+        }
+
+        var config = {
+            border: false,
+            allowSingle: false,
+            indent: false,
+            layout: {
+                type: 'table',
+                columns: (this.dateRangeExtendedView ? 2 : drawLabels ? 4 : 3)
+            },
+            bodyPadding: '10px 10px 10px 10px',
+            defaults: {
+                bodyStyle: 'padding:1px 1px 1px 0px'
+            },
+            items: panelItems
+        };
+
+        this.addEvents('dateSelect');
+        this.addEvents('dateRangeSelect');
+        //this.on('staterestore', this.stateRestored);
+        this.stateRestored();
+
+        Ext.apply(this, Ext.apply(config, this.initialConfig));
+        Ext.vcops.DateRangePicker.superclass.initComponent.apply(this, arguments);
+    }
+});

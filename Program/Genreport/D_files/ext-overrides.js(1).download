@@ -1,0 +1,1589 @@
+Ext.override(Ext.form.field.Base, {
+    fieldSubTpl: [
+        '<span class="tooltip tooltip-validation" style="width:100%">',
+        // note: {id} here is really {inputId}, but {cmpId} is available
+        '<input id="{id}" data-ref="inputEl" type="{type}" {inputAttrTpl}',
+        ' size="1"',
+        // allows inputs to fully respect CSS widths across all browsers
+        '<tpl if="name"> name="{name}"</tpl>',
+        '<tpl if="value"> value="{[Ext.util.Format.htmlEncode(values.value)]}"</tpl>',
+        '<tpl if="placeholder"> placeholder="{placeholder}"</tpl>',
+        '{%if (values.maxLength !== undefined){%} maxlength="{maxLength}"{%}%}',
+        '<tpl if="readOnly"> readonly="readonly"</tpl>',
+        '<tpl if="disabled"> disabled="disabled"</tpl>',
+        '<tpl if="tabIdx != null"> tabindex="{tabIdx}"</tpl>',
+        '<tpl if="fieldStyle"> style="{fieldStyle}"</tpl>',
+        '<tpl if="ariaEl == \'inputEl\'">',
+        '<tpl foreach="ariaElAttributes"> {$}="{.}"</tpl>',
+        '</tpl>',
+        '<tpl foreach="inputElAriaAttributes"> {$}="{.}"</tpl>',
+        ' class="{fieldCls} {typeCls} {typeCls}-{ui} {editableCls} {inputCls} {fixCls}" autocomplete="off"/>',
+        '</span>',
+        {
+            disableFormats: true
+        }
+    ],
+
+    validitychange_ : function(field, isValid, eOpts) {
+        var me = this;
+        if (me.rendered) {
+            if (!isValid) {
+                me.inputEl.up().addCls('invalid');
+            } else {
+                me.inputEl.up().removeCls('invalid');
+            }
+        }
+    },
+
+    blur_ : function() {
+        var me = this;
+        me.validitychange_(me, !me.hasActiveError(), null);
+    },
+
+    unsetActiveError : function() {
+        var me = this;
+        me.callParent(arguments);
+        me.validitychange_(me, !me.hasActiveError(), null);
+    },
+    
+    constructor: function() {
+        var result = this.callParent(arguments);
+        this.on('validitychange', this.validitychange_);
+        this.on('errorchange', this.blur_);
+        this.on('blur', this.blur_);
+        return result;
+    }
+});
+
+Ext.override(Ext.form.field.Text, {
+    //filter icon will be shown, when placeholder is visible.
+    filterField: false,
+
+    onChange: function() {
+        var result = this.callParent(arguments);
+        this.setFilterIcon();
+        return result;
+    },
+
+    setFilterIcon: function(event) {
+        if (this.filterField && this.rendered) {
+            if (!Ext.isIE) {
+                if (this.getRawValue().length > 0) {
+                    this.inputEl.up().removeCls('filter-icon');
+                } else {
+                    this.inputEl.up().addCls('filter-icon');
+                }
+            } else {
+                if (this.getRawValue().length > 0 || this.inputEl.dom === document.activeElement) {
+                    this.inputEl.up().removeCls('filter-icon');
+                } else {
+                    this.inputEl.up().addCls('filter-icon');
+                }
+            }
+        }
+    },
+
+    onRender: function() {
+        var result = this.callParent(arguments);
+        this.setFilterIcon();
+        this.setFocusBlurListeners();
+        return result;
+    },
+
+    setFocusBlurListeners: function() {
+        this.inputEl.on('focus', this.setFilterIcon, this);
+        this.inputEl.on('blur', this.setFilterIcon, this);
+    },
+
+    initConfig: function(config) {
+        if (config.filterField || config.filterField !== false && this.filterField) {
+            config.inputCls = config.inputCls ? " filter-input" : "filter-input";
+            config.componentCls = config.componentCls ? " filter-component" : "filter-component";
+        }
+        return this.callParent(arguments);
+    }
+});
+
+Ext.override(Ext.form.field.TextArea, {
+    inputCls: '',
+    
+    fieldSubTpl: [
+        '<div style="padding:0px;height:100%;">',
+        '<div class="form-group" style="height:100%;padding:3px">',
+        '<textarea id="{id}" data-ref="inputEl" rows="1" {inputAttrTpl}',
+        '<tpl if="name"> name="{name}"</tpl>',
+        '<tpl if="placeholder"> placeholder="{placeholder}"</tpl>',
+        '<tpl if="maxLength !== undefined"> maxlength="{maxLength}"</tpl>',
+        '<tpl if="readOnly"> readonly="readonly"</tpl>',
+        '<tpl if="disabled"> disabled="disabled"</tpl>',
+        '<tpl if="tabIdx != null"> tabindex="{tabIdx}"</tpl>',
+        ' class="{fieldCls} {typeCls}-{ui} {inputCls} {fixCls}" ',
+        'style="height:100%;<tpl if="fieldStyle">{fieldStyle}</tpl>"',
+        '<tpl foreach="ariaElAttributes"> {$}="{.}"</tpl>',
+        '<tpl foreach="inputElAriaAttributes"> {$}="{.}"</tpl>',
+        ' autocomplete="off">\n',
+        '<tpl if="value">{[Ext.util.Format.htmlEncode(values.value)]}</tpl>',
+        '</textarea>',
+        '</div>',
+        '</div>',
+        {
+            disableFormats: true
+        }
+    ]
+});
+
+Ext.override(Ext.form.field.Radio, {
+    wrapInnerCls: '',
+    noBoxLabelCls: '',
+    
+    fieldSubTpl: [
+        '<div id="{cmpId}-innerWrapEl" data-ref="innerWrapEl" role="presentation"',
+        ' class="{wrapInnerCls} radio-inline">',
+        '<tpl if="labelAlignedBefore">',
+        '{beforeBoxLabelTpl}',
+        '<label id="{cmpId}-boxLabelEl" data-ref="boxLabelEl" {boxLabelAttrTpl} class="{boxLabelCls} ',
+        '{boxLabelCls}-{ui} {boxLabelCls}-{boxLabelAlign} {noBoxLabelCls} {childElCls}" style="padding: 0px 0px 0px 21px" for="{id}">',
+        '{beforeBoxLabelTextTpl}',
+        '{boxLabel}',
+        '{afterBoxLabelTextTpl}',
+        '</label>',
+        '{afterBoxLabelTpl}',
+        '</tpl>',
+        '<span id="{cmpId}-displayEl" data-ref="displayEl" role="presentation" class="{fieldCls} {typeCls} ',
+        '{typeCls}-{ui} {inputCls} {inputCls}-{ui} {fixCls} {childElCls} {afterLabelCls}">',
+        '<input type="{inputType}" id="{id}" name="{inputName}" data-ref="inputEl" {inputAttrTpl}',
+        '<tpl if="tabIdx != null"> tabindex="{tabIdx}"</tpl>',
+        '<tpl if="disabled"> disabled="disabled"</tpl>',
+        '<tpl if="checked"> checked="checked"</tpl>',
+        '<tpl if="fieldStyle"> style="{fieldStyle}"</tpl>',
+        ' class="{checkboxCls}" autocomplete="off" hidefocus="true" ',
+        '<tpl foreach="ariaElAttributes"> {$}="{.}"</tpl>',
+        '<tpl foreach="inputElAriaAttributes"> {$}="{.}"</tpl>',
+        '/>',
+        '</span>',
+        '<tpl if="!labelAlignedBefore">',
+        '{beforeBoxLabelTpl}',
+        '<label id="{cmpId}-boxLabelEl" data-ref="boxLabelEl" {boxLabelAttrTpl} class="{boxLabelCls} ',
+        '{boxLabelCls}-{ui} {boxLabelCls}-{boxLabelAlign} {noBoxLabelCls} {childElCls}" style="padding: 0px 0px 0px 21px" for="{id}">',
+        '{beforeBoxLabelTextTpl}',
+        '{boxLabel}',
+        '{afterBoxLabelTextTpl}',
+        '</label>',
+        '{afterBoxLabelTpl}',
+        '</tpl>',
+        '</div>',
+        {
+            disableFormats: true,
+            compiled: true
+        }
+    ],
+    
+    setValue: function(value) {
+        var me = this;
+        var result = me.callParent(arguments);
+        var radio = me.inputEl;
+        if (radio && radio.dom) {
+            radio.dom.checked = me.getValue();
+        }
+        return result;
+    },
+    
+    constructor : function(config) {
+        if (config == null) {
+            config = {};
+        }
+        config.boxLabel = (config.boxLabel != null ? config.boxLabel : (this.boxLabel != null ? this.boxLabel : ' '));
+        return this.callParent(arguments);
+    }
+});
+
+Ext.override(Ext.form.field.Checkbox, {
+    partialCls: Ext.baseCSSPrefix + 'checkbox-partial',
+    isPartial: false,
+    wrapInnerCls: '',
+    noBoxLabelCls: '',
+
+    fieldSubTpl: [
+        '<div id="{cmpId}-innerWrapEl" data-ref="innerWrapEl" role="presentation"',
+        ' class="{wrapInnerCls} checkbox-inline">',
+        '<tpl if="labelAlignedBefore">',
+        '{beforeBoxLabelTpl}',
+        '<label id="{cmpId}-boxLabelEl" data-ref="boxLabelEl" {boxLabelAttrTpl} class="{boxLabelCls} ',
+        '{boxLabelCls}-{ui} {boxLabelCls}-{boxLabelAlign} {noBoxLabelCls} {childElCls}" style="padding: 0px 0px 0px 21px" for="{id}">',
+        '{beforeBoxLabelTextTpl}',
+        '{boxLabel}',
+        '{afterBoxLabelTextTpl}',
+        '</label>',
+        '{afterBoxLabelTpl}',
+        '</tpl>',
+        '<span id="{cmpId}-displayEl" data-ref="displayEl" role="presentation" class="{fieldCls} {typeCls} ',
+        '{typeCls}-{ui} {inputCls} {inputCls}-{ui} {fixCls} {childElCls} {afterLabelCls}">',
+        '<input type="{inputType}" id="{id}" name="{inputName}" data-ref="inputEl" {inputAttrTpl}',
+        '<tpl if="tabIdx != null"> tabindex="{tabIdx}"</tpl>',
+        '<tpl if="disabled"> disabled="disabled"</tpl>',
+        '<tpl if="checked"> checked="checked"</tpl>',
+        '<tpl if="fieldStyle"> style="{fieldStyle}"</tpl>',
+        ' class="{checkboxCls}" autocomplete="off" hidefocus="true" ',
+        '<tpl foreach="ariaElAttributes"> {$}="{.}"</tpl>',
+        '<tpl foreach="inputElAriaAttributes"> {$}="{.}"</tpl>',
+        '/>',
+        '</span>',
+        '<tpl if="!labelAlignedBefore">',
+        '{beforeBoxLabelTpl}',
+        '<label id="{cmpId}-boxLabelEl" data-ref="boxLabelEl" {boxLabelAttrTpl} class="{boxLabelCls} ',
+        '{boxLabelCls}-{ui} {boxLabelCls}-{boxLabelAlign} {noBoxLabelCls} {childElCls}" style="padding: 0px 0px 0px 21px" for="{id}">',
+        '{beforeBoxLabelTextTpl}',
+        '{boxLabel}',
+        '{afterBoxLabelTextTpl}',
+        '</label>',
+        '{afterBoxLabelTpl}',
+        '</tpl>',
+        '</div>',
+        {
+            disableFormats: true,
+            compiled: true
+        }
+    ],
+    
+    setValue: function(value) {
+        var me = this;
+        var result = me.callParent(arguments);
+        var check = me.inputEl;
+        if (check && check.dom) {
+            check.dom.checked = me.getValue();
+        }
+        return result;
+    },
+    
+    /**
+     * Sets the partial state of the checkbox
+     * @param {Boolean} Partial True to check, false to un-check
+     */
+    setPartial : function(value) {
+        var me = this;
+        if (value === true) {
+            me.addCls(me.partialCls);
+            me.isPartial = true;
+        } else if (value === false) {
+            me.removeCls(me.partialCls);
+            me.isPartial = false;
+        }
+    },
+
+    initComponent: function() {
+        var me = this;
+        var result = me.callParent(arguments);
+        if (me.isPartial) {
+            me.setPartial(true);
+        }
+        return result;
+    },
+    
+    constructor : function(config) {
+        if (config == null) {
+            config = {};
+        }
+        config.boxLabel = (config.boxLabel != null ? config.boxLabel : (this.boxLabel != null ? this.boxLabel : ' '));
+        return this.callParent(arguments);
+    }
+});
+
+Ext.override(Ext.menu.CheckItem, {
+    // showing expand menu with offset
+    doExpandMenu: function(clickEvent) {
+        var me = this,
+            menu = me.menu;
+        if (!menu.isVisible()) {
+            me.parentMenu.activeChild = menu;
+            menu.ownerCmp = me;
+            menu.parentMenu = me.parentMenu;
+            menu.constrainTo = document.body;
+            // Pointer-invoked menus do not auto focus, key invoked ones do.
+            menu.autoFocus = !clickEvent || !clickEvent.pointerType;
+            menu.showBy(me, me.menuAlign, [0, -19]);
+        }
+        // Keyboard events should focus the first menu item even if it was already expanded
+        else if (clickEvent && clickEvent.type === 'keydown') {
+            menu.focus();
+        }
+    }
+});
+
+Ext.override(Ext.view.Table, {
+    initComponent: function() {
+        var me = this;
+        var res = me.callParent(arguments);
+        if (me.emptyText) {
+            return res;
+        }
+        me.funelText = me.noDataText || bundle['main.noResultFound'];
+
+        var store = me.getStore();
+        if (store && (me.grid.xtype == "gridpanel" || me.grid.xtype == "grid" || me.showNoResultFunnel)) {
+            store.on('load', me.onStoreLoad_, me);
+            store.on('datachanged', me.onStoreChange_, me);
+            store.on('filterchange', me.renderFunnel_, me);
+            me.on('resize', me.onViewResize_, me);
+        }
+        return res;
+    },
+
+    onStoreChange_: function(store) {
+        var me = this;
+        if (store.getCount()) {
+            var cnt = me.body.dom;
+            var funel = me.body.down('.datagrid-funel');
+            if (funel) {
+                funel.remove();
+            }
+        }
+    },
+
+    onViewResize_: function() {
+        var me = this;
+        var cnt = me.body.dom;
+        var funel = me.body.down('.datagrid-funel');
+        if (funel) {
+            funel.dom.style.width = '10px';
+            funel.dom.style.width = (me.getWidth() - 30) + 'px';
+            funel.dom.style.top = (me.getHeight() / 3) + 'px';
+        }
+    },
+
+    onStoreLoad_: function() {
+        this.renderFunnel_();
+    },
+
+    renderFunnel_: function() {
+        var me = this;
+        var store = me.getStore();
+
+        if (store.getCount() === 0 && me.body.dom && me.body.dom.innerHTML == "") {
+            var str = '<div class="empty-grid-funel"></div><div style="font-size: 16px; opacity: 0.7; margin-top: 10px">' + (me.noDataTextCustom ? me.noDataTextCustom : me.funelText) + '</div>';
+            me.body.dom.innerHTML = ('<div align="center" class="datagrid-funel" style="position: absolute; top: ' + (me.getHeight() / 3) + 'px; width: ' + (me.getWidth() - 30) + 'px">' + str + '</div>');
+        }
+    }
+});
+
+Ext.override(Ext.toolbar.Paging, {
+    minWidth: 120,
+    minHeight: 28,
+
+    doRender : function() {
+        var me = this, pageData, pageCount, count, msg;
+        if (!me.el) return;
+        var cmpWidth = me.getWidth();
+        if (cmpWidth < me.minWidth) return;
+        count = me.store.getCount();
+        if (count === 0) {
+            currPage = 0;
+            pageCount = 0;
+        } else {
+            pageData = me.getPageData();
+            currPage = pageData.currentPage;
+            pageCount = pageData.pageCount;
+            if (currPage > pageCount) {
+                return;
+            }
+        }
+        me.currPage = currPage;
+        me.pageCount = pageCount;
+        if(me.displayInfo) {
+            msg = count === 0 ? me.emptyMsg : Ext.String.format(me.displayMsg, pageData.fromRecord, pageData.toRecord, pageData.total);
+        }
+        var cmpPadding = 32, pageDigetWidth = 20, btnPadding = 25;
+        var minBarWidth = me.colButton.isVisible() ? (me.colButton.width + btnPadding) : btnPadding;
+        var pageCmpWidth = ((pageCount > 7 ? 7 : pageCount) + 2) * pageDigetWidth + 15;
+        me.centerPage = me.centerPage ? me.centerPage : 4;
+        me.centerPage = me.centerPage > pageCount - 3 ? pageCount - 3 : me.centerPage;
+        me.centerPage = me.centerPage < 4 ? 4: me.centerPage;
+        me.onlyPage = me.onlyPage ? me.onlyPage : 1;
+        me.onlyPage = me.onlyPage > pageCount ? pageCount : me.onlyPage;
+        var messageWidth = getTextWidth(msg); + cmpPadding;
+        var oldState = me.showPages;
+        me.showPages = me.el && cmpWidth > pageCmpWidth + messageWidth + minBarWidth;
+        if(!me.showPages) {
+            pageCmpWidth = 3 * pageDigetWidth + 15;
+            var reqWidth = pageCmpWidth + minBarWidth + messageWidth;
+            msg = me.el && cmpWidth < reqWidth ? '' : msg;
+        }
+        if (Ext.isBoolean(oldState) &&  oldState !== me.showPages) {
+            if (me.showPages) {
+                me.centerPage = currPage < 5 ? 4 : (currPage > pageCount - 4 ? pageCount - 3 : currPage);
+            } else {
+                me.onlyPage = currPage;
+            }
+        }
+        me.currPage = currPage;
+        var content = me.mainContentTpl.apply({
+            msg: msg,
+            pageCount: pageCount,
+            currPage: currPage,
+            centerPage: me.centerPage,
+            onlyPage: me.onlyPage,
+            showPages: me.showPages,
+            cmpPadding: cmpPadding
+        });
+        me.pagingCmp.update(content);
+    },
+
+    cmpClick: function (event) {
+        var me = this;
+        var val = event.target.getAttribute('val');
+        if (!val) return;
+        switch (val)
+        {
+            case 'prev': {
+                if (me.currPage > 1) {
+                    me.onlyPage = me.currPage - 1;
+                    me.centerPage = me.currPage;
+                    me.movePrevious();
+                }
+            } break;
+            case 'next':  {
+                if (me.currPage < me.pageCount) {
+                    me.onlyPage = me.currPage + 1;
+                    me.centerPage = me.currPage;
+                    me.currPage; me.moveNext();
+                }
+            } break;
+            case 'first': { me.moveFirst(); } break;
+            case 'last':  { me.moveLast(); } break;
+            default:      { if (!isNaN(val)) me.store.loadPage(parseInt(val)); } break;
+        }
+    },
+
+    cmpMouseWheel: function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        var me = this;
+        var delta = event.event.deltaY || event.event.wheelDelta;
+        if (delta > 0) {
+            me.onlyPage ++; me.centerPage ++; me.onLoad();
+        } else {
+            me.onlyPage --; me.centerPage --; me.onLoad();
+        }
+    },
+
+    selectColumns: function(btn) {
+        var me = this;
+        var checkItems = me.getColumnsMenuItems();
+        btn.menu.removeAll(true);
+        var topCmp = {xtype: 'container',
+
+                selectAll: true,
+                padding : "0 15 12 18",
+                minWidth: 200,
+                layout: 'hbox',
+                items: [{
+                    xtype: 'label',
+                    padding : "0 12 0 0",
+                    selectAll: true,
+                    style: {'font-size': '16px', 'line-height': '16px'},
+                    text: me.getParentGrid().headerCt.columnsText,
+                },{
+                    xtype: 'component',
+                    flex: 1
+                },{
+                    xtype: 'tool',
+                    type: 'close',
+                    margin: '-3 0 0 0',
+                    listeners: {
+                        click: function () {
+                            btn.menu.hide();
+                        }
+                    }
+              }]
+        };
+        btn.menu.add(topCmp);
+        if (checkItems.length) {
+            var count = checkItems.length;
+            for (var i = 0; i < count; i++) {
+                var chb = Ext.create('Ext.menu.CheckItem', {
+                    text: checkItems[i].text,
+                    margin: '0 0 0 20',
+                    checked: checkItems[i].checked,
+                    height: 26,
+                    listeners: {
+                        checkchange: function() {
+                            me.setButtonsStates(btn.menu.items);
+                        }
+                    }
+                });
+                btn.menu.add(chb);
+                if(chb.el && chb.el.dom) {
+                    chb.setText(chb.el.dom.textContent);
+                }
+            }
+            btn.menu.add({
+                xtype: 'label',
+                margin : "15 0 0 0",
+                padding : "2 0 0 10",
+                height: 20,
+                selectAll: true,
+                text: bundle['extjs.PagingToolbar.selectAll'],
+                cls: 'clickableLabel',
+                listeners: {
+                    afterrender: function(cmp) {
+                        cmp.getEl().on('click', function() {
+                            me.mergeColumns(btn.menu.items, cmp.selectAll);
+                            me.setButtonsStates(btn.menu.items);
+                        });
+                    }
+                }
+            });
+            var bottonCmp = {xtype: 'container',
+                    selectAll: true,
+                    padding : "22 14 0 0",
+                    layout: 'hbox',
+                    items: [{
+                        xtype: 'component',
+                        flex: 1
+                    }, {
+                        xtype: 'button',
+                        cls: 'btn btn-primary btn-sm',
+                        selectAll: true,
+                        padding: '0 5 0 5',
+                        width: 80,
+                        text: bundle['main.ok'],
+                        listeners: {
+                            click: function(cmp) {
+                                btn.menu.hide();
+                                me.mergeColumns(btn.menu.items);
+                            }
+                        }
+                    }]
+            };
+            btn.menu.add(bottonCmp);
+            me.correctLayout(btn.menu.items);
+        }
+        var menuY = btn.getY() - btn.menu.getHeight();
+        btn.menu.setY(menuY > 0 ? menuY : 0);
+        btn.menu.setX(btn.menu.getX() + (menuY > 0 ? 4 : 30));
+        me.setButtonsStates(btn.menu.items);
+    },
+
+    setButtonsStates: function(items) {
+        var count = items.getCount();
+        var selectAllLabel = items.getAt(count - 2);
+        var mergeColumnsBtn = items.getAt(count - 1).items.getAt(1);
+        var selColsCount = 0;
+        for (var i = 0; i < count - 3; i++) {
+            if (items.getAt(i + 1).checked) {
+                selColsCount ++;
+            }
+        }
+        mergeColumnsBtn.setDisabled( selColsCount === 0);
+        selectAllLabel.setText(selColsCount === count - 3 ? bundle['extjs.PagingToolbar.deselectAll'] : bundle['extjs.PagingToolbar.selectAll']);
+        selectAllLabel.selectAll = selColsCount < count - 3;
+        this.correctLayout(items);
+    },
+
+    correctLayout: function(items) {
+        Ext.suspendLayouts();
+        count = items.getCount();
+        for (var i = 1; i < count - 1; i++) {
+            if (items.getAt(i).el) {
+                items.getAt(i).el.dom.style.left = '9px';
+            }
+        }
+        Ext.resumeLayouts(true);
+    },
+
+    getParentGrid: function() {
+        var me = this;
+        var parent = me.up();
+        return parent.view ? parent : parent.down('grid');
+    },
+
+    destroyColumnMenuItems: function() {
+        var me = this;
+        if (me.menuCheckItems) {
+            for (var i = 0; i < me.menuCheckItems.length; i++) {
+                Ext.destroy(me.menuCheckItems[i]);
+            }
+        }
+    },
+
+    getColumnsMenuItems: function() {
+        var me = this;
+        me.destroyColumnMenuItems();
+        var parent = me.getParentGrid();
+        var view = parent ? parent.view : null;
+        me.menuCheckItems = view ? (view.headerCt.getColumnMenu(view.headerCt) || []) : [];
+        return me.menuCheckItems;
+    },
+
+    mergeColumns: function(items, value) {
+        var me = this;
+        if (!Ext.isBoolean(value)) {
+            var checkItems = me.getColumnsMenuItems();
+        }
+        var count = items.getCount();
+        for (var i = 0; i < count - 3; i++) {
+            if (Ext.isBoolean(value)) {
+                var checkbox = items.getAt(i + 1);
+                checkbox.suspendEvent('checkchange');
+                checkbox.setChecked(value);
+                checkbox.resumeEvent('checkchange');
+            } else {
+                checkItems[i].setChecked(items.getAt(i + 1).checked);
+            }
+        }
+    },
+
+    setColMenuButtonVisible: function() {
+        var me = this;
+        var colcount = 0;
+        var grid = me.getParentGrid();
+        var checkItems = me.getColumnsMenuItems();
+        var canHideColumns = grid && grid.enableColumnHide !== false  && checkItems.length > 1;
+        me.colButton.setVisible(canHideColumns);
+    },
+
+    initComponent: function() {
+        var me = this;
+        var result = me.callParent(arguments);
+        me.on('resize', function() {
+            if (me.isVisible(true)) {
+                me.doRender();
+            }
+        }, me);
+        var count = me.items.getCount();
+        for (var i = 0; i < count; i++) {
+            me.items.getAt(i).hide();
+        }
+
+        me.colButton = Ext.create('Ext.button.Button', {
+            ui: '',
+            html: getClrIcon('<clr-icon shape="view-columns" class="gridColEditBtn icon-tool"></clr-icon>'),
+            hidden: true,
+            margin: '0 0 0 8',
+            width: 26,
+            scope: me,
+            handler: me.selectColumns,
+            menu:[{html: ''}]
+        });
+        me.add(me.colButton);
+        me.add('->');
+        me.pagingCmp = Ext.create('Ext.container.Container', { height: '100%' });
+        me.pagingCmp.on("afterrender", function (cmp) {
+            cmp.getEl().on('click', function (e) {
+                me.cmpClick(e);
+            }, me);
+            cmp.getEl().on(mousewheel, function (e) {
+                me.cmpMouseWheel(e);
+            }, me);
+            cmp.getEl().on('keypress', function (e) {
+                if (e.keyCode == Ext.event.Event.SPACE || e.keyCode == Ext.event.Event.ENTER) {
+                    me.cmpClick(e);
+                }
+            }, me);
+        });
+        me.add(me.pagingCmp);
+        me.mainContentTpl = new Ext.XTemplate(
+                '<div align="center" style="user-select: none; height:100%; color:gray; font-size: 11px; padding:5px 4px 0px 0px">',
+                    '<tpl if="msg">',
+                        '<div style="display:inline; white-space:nowrap; padding-right:{[values.pageCount > 1 ? values.cmpPadding : 4]}px">{msg}</div>',
+                    '</tpl>',
+                    '<tpl if="pageCount &gt; 1">',
+                        '<div tabindex="0" style="display:inline; cursor:pointer; padding:4px 10px 4px 4px" val="prev">&#10094;</div>',
+                        '<tpl if="showPages">',
+                            '<div tabindex="0" class="{[this.getCSSClass(values, 1)]}" val="first">1</div>',
+                            '<tpl if="pageCount &gt; 2">',
+                                '<tpl if="centerPage &gt; 4">',
+                                    '<div style="display:inline-block; width:20px;">...</div>',
+                                '<tpl else>',
+                                    '<div tabindex="0" class="{[this.getCSSClass(values, 2)]}" val="2">2</div>',
+                                '</tpl>',
+                            '</tpl>',
+                            '<tpl if="pageCount &gt; 3">',
+                                '<div tabindex="0" class="{[this.getCSSClass(values, values.centerPage - 1)]}" val="{centerPage - 1}">{centerPage - 1}</div>',
+                            '</tpl>',
+                            '<tpl if="pageCount &gt; 4">',
+                                '<div tabindex="0" class="{[this.getCSSClass(values, values.centerPage)]}" val="{centerPage}">{centerPage}</div>',
+                            '</tpl>',
+                            '<tpl if="pageCount &gt; 5">',
+                                '<div tabindex="0" class="{[this.getCSSClass(values, values.centerPage + 1)]}" val="{centerPage + 1}">{centerPage + 1}</div>',
+                            '</tpl>',
+                            '<tpl if="pageCount &gt; 6">',
+                                '<tpl if="centerPage &lt; pageCount - 3">',
+                                    '<div style="display:inline-block; width:20px;">...</div>',
+                                '<tpl else>',
+                                    '<div tabindex="0" class="{[this.getCSSClass(values, values.pageCount - 1)]}" val="{pageCount - 1}">{pageCount - 1}</div>',
+                                '</tpl>',
+                            '</tpl>',
+                            '<tpl if="pageCount &gt; 1">',
+                                '<div tabindex="0" class="{[this.getCSSClass(values, values.pageCount)]}" val="last">{pageCount}</div>',
+                            '</tpl>',
+                        '<tpl else>',
+                            '<div tabindex="0" class="{[this.getCSSClass(values, values.onlyPage)]}" val="{onlyPage}">{onlyPage}</div>',
+                        '</tpl>',
+                        '<div tabindex="0" style="display:inline; cursor:pointer; padding:4px 4px 4px 10px" val="next">&#10095;</div>',
+                    '</tpl>',
+                '</div>',
+                {
+                    getCSSClass : function(values, val) {
+                        return values.currPage == val ? 'pagingBarItemSelected' : 'pagingBarItem';
+                    }
+                }
+        );
+        me.on('afterrender', me.setColMenuButtonVisible , me);
+        me.on('beforedestroy', function() {
+            me.destroyColumnMenuItems();
+        }, me);
+        return result;
+    }
+});
+
+Ext.override(Ext.LoadMask, {
+    renderTpl: [
+        '<div id="{id}-msgWrapEl" data-ref="msgWrapEl" class="{[values.$comp.msgWrapCls]}" role="presentation">',
+        '<div id="{id}-msgEl" data-ref="msgEl" class="{[values.$comp.msgCls]} ',
+        Ext.baseCSSPrefix,
+        'mask-msg-inner {childElCls}" role="presentation">',
+        '<span class="spinner spinner-sm spinner-inline" style="display:inline-block; vertical-align:middle; background-repeat:no-repeat"></span>',
+        '<div id="{id}-msgTextEl" data-ref="msgTextEl" style="display:inline-block;" class="',
+        Ext.baseCSSPrefix,
+        'mask-msg-text',
+        '{childElCls}" role="presentation">{msg}</div>',
+        '</div>',
+        '</div>'
+    ],
+    
+    /* adding transitions to mask hide and show, darkMask mode */
+    show: function() {
+        this.addCls("fade");
+        var result = this.callParent(arguments);
+        this.addCls("in");
+        return result;
+    },
+
+    constructor: function(config) {
+        var result = this.callParent(arguments);
+        var target = this.getMaskTarget().component;
+        if (target && target.darkMask) {
+            this.addCls("darkMask");
+        }
+        return result;
+    },
+    
+    hide: function() {
+        if (this && this.el) {
+            this.removeCls("in");
+            return this.callParent();
+        }
+    }
+});
+
+Ext.override(Ext.window.Window, {
+    shadow: false,
+    /* enables or disabled animated show */
+    animation: true,
+    /* adding clarity window animations */
+    show: function() {
+        var me = this;
+        var animate = me.animation !== false;
+        if (animate) {
+            me.setStyle("opacity", 0);
+        }
+        var result = me.callParent(arguments);
+        if (animate) {
+            me.addCls("fadeDown");
+        }
+
+        // adding this later will break transform
+        me.setStyle("opacity", null);
+        Ext.Function.defer(function(cls) {
+            this.addCls(cls);
+            this.toFront(); // in some cases mask is over window
+        }, 100, me, ["in"]);
+        return result;
+    },
+
+    close: function() {
+        var me = this;
+        if (me.fireEvent('beforeclose', this) !== false) {
+            if (me.animation !== false) {
+                me.removeCls("in");
+                Ext.Function.defer(me.doClose, 100, this, []);
+            } else {
+                me.doClose();
+            }
+        }
+    },
+
+    constructor : function(config) {
+        if (config == null) {
+            config = {};
+        }
+        config.bodyPadding = (config.bodyPadding != null ? config.bodyPadding : (this.bodyPadding != null ? this.bodyPadding : '16px 20px 24px 20px'));
+        this.bodyPadding = config.bodyPadding;
+        return this.callParent(arguments);
+    }
+});
+
+Ext.override(Ext.ZIndexManager, {
+    privates: {
+        showModalMask: function(comp) {
+            var me = this,
+                compEl = comp.el,
+                maskTarget = comp.floatParent ? comp.floatParent.getEl() : comp.container,
+                mask = me.mask, applyFade = !mask || !mask.isVisible();
+            if (this.fadeComplete == false) {
+                return;
+            }
+            if (!mask) {
+                // Create the mask at zero size so that it does not affect upcoming target measurements.
+                me.mask = mask = Ext.getBody().createChild({
+                    // tell the spec runner to ignore this element when checking if the dom is clean 
+                    'data-sticky': true,
+                    role: 'presentation',
+                    cls: Ext.baseCSSPrefix + 'mask ' + Ext.baseCSSPrefix + 'border-box' + (applyFade ? ' fade':''),
+                    style: 'height:0;width:0;background-color: rgba(49, 49, 49, 0.85);'
+                });
+                mask.setVisibilityMode(Ext.Element.DISPLAY);
+                mask.on({
+                    mousedown: me.onMaskMousedown,
+                    click: me.onMaskClick,
+                    scope: me
+                });
+            } else // If the mask is already shown, hide it before showing again
+            // to ensure underlying elements' tabbability is restored
+            {
+                me.hideModalMask(false);
+            }
+            mask.maskTarget = maskTarget;
+            // Since there is no fast and reliable way to find elements above or below
+            // a given z-index, we just cheat and prevent tabbable elements within the
+            // topmost component from being made untabbable.
+            maskTarget.saveTabbableState({
+                excludeRoot: compEl
+            });
+            // Size and zIndex stack the mask (and its shim)
+            me.syncModalMask(comp, applyFade);
+        },
+        
+        syncModalMask: function(comp, applyFade) {
+            var me = this,
+                zIndex = comp.el.getZIndex() - 4,
+                mask = me.mask,
+                shim = me.maskShim,
+                viewSize = me.getMaskBox();
+            if (shim) {
+                shim.setZIndex(zIndex);
+                shim.show();
+                shim.setBox(viewSize);
+            }
+            mask.setZIndex(zIndex);
+            mask.show();
+            mask.setBox(viewSize);
+            if (applyFade) {
+                Ext.Function.defer(function() {
+                    delete this.fadeComplete;
+                }, 100, this);
+                mask.addCls("in");
+                this.fadeComplete = false;
+            }
+        },
+        
+        hideModalMask: function(animate) {
+            var mask = this.mask,
+                maskShim = this.maskShim;
+            if (mask && mask.isVisible() && mask.maskTarget) {
+                mask.maskTarget.restoreTabbableState();
+                mask.maskTarget = undefined;
+                if (animate == false) {
+                    mask.hide();
+                } else {
+                    mask.removeCls("in");
+                    Ext.Function.defer(mask.hide, 150, mask);
+                }
+                if (maskShim) {
+                    maskShim.hide();
+                }
+            }
+        }
+    }
+});
+
+Ext.override(Ext.dom.Element, {
+    mask: function(msg, msgCls, elHeight) {
+        if (((msg == null || msg == "") && msgCls == null) || msgCls == "splashscreen") {
+            return this.callParent(arguments);
+        }
+        var me = this,
+            dom = me.dom,
+            data = me.getData(),
+            XMASKED = Ext.baseCSSPrefix + "masked",
+            maskEl = data.maskEl,
+            EXTELMASKMSG = Ext.baseCSSPrefix + "mask-msg",
+            maskMsg;
+        // We always needs to recreate the mask since the DOM element may have been re-created
+        if (maskEl) {
+            maskEl.destroy();
+        }
+        maskEl = Ext.DomHelper.append(dom, {
+            role: 'presentation',
+            cls: Ext.baseCSSPrefix + "mask " + Ext.baseCSSPrefix + "border-box fade",
+            children: {
+                role: 'presentation',
+                cls: msgCls ? EXTELMASKMSG + " " + msgCls : EXTELMASKMSG,
+                cn: {
+                    tag: 'div',
+                    role: 'presentation',
+                    style: {
+                        margin: '4px'
+                    },
+                    cn: {
+                        children: [{
+                            tag: 'span',
+                            role: 'presentation',
+                            cls: 'spinner spinner-inline',
+                            style: {'background-repeat': 'no-repeat'}
+                        },{
+                            tag: 'span',
+                            role: 'presentation',
+                            style: {
+                                'margin-left': '6px'
+                            },
+                            html: msg || ''
+                        }]
+                    }
+                }
+            }
+        }, true);
+        maskMsg = Ext.fly(maskEl.dom.firstChild);
+        data.maskEl = maskEl;
+        me.addCls(XMASKED);
+        maskEl.setDisplayed(true);
+        maskEl.addCls("in");
+        if (typeof msg === 'string') {
+            maskMsg.setDisplayed(true);
+            maskMsg.center(me);
+        } else {
+            maskMsg.setDisplayed(false);
+        }
+        if (dom === document.body) {
+            maskEl.addCls(Ext.baseCSSPrefix + 'mask-fixed');
+        }
+        // When masking the body, don't touch its tabbable state
+        me.saveTabbableState({
+            skipSelf: dom === document.body
+        });
+        // ie will not expand full height automatically
+        if (Ext.isIE9m && dom !== document.body && me.isStyle('height', 'auto')) {
+            maskEl.setSize(undefined, elHeight || me.getHeight());
+        }
+        return maskEl;
+    }
+});
+
+Ext.override(Ext.tree.Panel, {
+    lines: false,
+    border: false,
+    constructor : function(config) {
+        if (config == null) {
+            config = {};
+        }
+        config.cls = (config.cls != null ? config.cls : (this.cls != null ? this.cls : 'clarityTree'));
+        this.cls = config.cls;
+        return this.callParent(arguments);
+    }
+});
+
+Ext.override(Ext.grid.column.Column, {
+    menuDisabled: true
+});
+
+Ext.override(Ext.panel.Panel, {
+    constructor : function(config) {
+        if (this.hideHeaderBorder) {
+            if (config == null) {
+                config = {};
+            }
+            config.cls = config.cls ? config.cls + ' noborder-panel-title' : 'noborder-panel-title';
+            this.cls = config.cls;
+        }
+        return this.callParent(arguments);
+    }
+});
+
+Ext.override(Ext.panel.Tool, {
+    margin: '0 0 0 14px'
+});
+
+Ext.override(Ext.grid.Panel, {
+    border: false,
+    constructor : function(config) {
+        if (config == null) {
+            config = {};
+        }
+        config.columnLines = (config.columnLines != null ? config.columnLines : false);
+        config.rowLines = (config.rowLines != null ? config.rowLines : true);
+        config.cls = (config.cls != null ? config.cls : (this.cls != null ? this.cls : 'clarityGrid'));
+        this.cls = config.cls;
+        return this.callParent(arguments);
+    },
+
+    initComponent: function() {
+        this.on("beforeedit", this.beforeEdit);
+        return this.callParent(arguments);
+    },
+
+    beforeEdit: function(editor, e) {
+        if (e.column.hasEditor()) {
+            e.column.getEditor().on("change", function () {this.prepareEditor(editor, e);}, this, {single: true});
+            this.prepareEditor(editor, e);
+        }
+    },
+
+    prepareEditor: function(editor, e) {
+        // Setting special class to grid editor for changing editors background color to grid selection color.
+        e.column.getEditor().removeCls('editor-notransparent');
+        var grid = editor.grid;
+        var rec = grid.getSelectionModel().getSelection();
+        if (this.getSelectionModel().isSelected(e.record)) {
+            e.column.getEditor().addCls('editor-notransparent');
+        }
+    }
+});
+
+Ext.override(Ext.grid.header.Container, {
+    constructor : function(config) {
+        if (config == null) {
+            config = {};
+        }
+        return this.callParent(arguments);
+    }
+});
+
+Ext.override(Ext.window.MessageBox, {
+    minWidth: 420,
+    minPromptWidth: 420,
+
+    show : function(config) {
+        var me = this;
+        if (config.icon !== Ext.MessageBox.WARNING && config.icon !== Ext.MessageBox.ERROR) {
+            delete config.icon;
+        }
+        return me.callParent(arguments);
+    },
+
+    initComponent: function () {
+        var me = this;
+        var result = me.callParent(arguments);
+
+        me.on('afterrender', function (cmp, eOpts) {
+            this.topContainer.setStyle({'padding-left': '1px'});
+        });
+
+        if (me.bottomTb) {
+            var okButton = me.msgButtons[0];
+            var yesButton = me.msgButtons[1];
+            var noButton = me.msgButtons[2];
+            var cancelButton = me.msgButtons[3];
+            me.bottomTb.removeAll(false);
+            me.bottomTb.add([cancelButton, noButton, yesButton, okButton]);
+            me.bottomTb.setConfig({layout: {pack: "end"}})
+        }
+        return result;
+    },
+
+    makeButton: function(btnIdx) {
+        var btnId = this.buttonIds[btnIdx];
+        var btnClass = btnId === 'ok' || btnId === 'yes' ? 'btn btn-primary': 'btn btn-outline';
+        return Ext.create('Ext.button.Button', {
+            handler: this.btnCallback,
+            itemId: btnId,
+            scope: this,
+            cls: btnClass,
+            text: this.buttonText[btnId],
+            minWidth: 75
+        });
+    }
+});
+
+Ext.override(Ext.button.Button, {
+    clrSignature: '<clr-icon',
+    constructor: function(config) {
+        if (config != null) {
+            var ui = config.ui || this.ui;
+            this.manipulateUI = ui === 'default' && !config.html;
+            if (config.cls && config.cls.indexOf('btn ') === 0 || config.menuButton && config.html) {
+                config.ui = '';
+            }
+            if (config.menuButton && config.menu && this.manipulateUI) {
+                config.ui = '';
+                config._textCls = Ext.baseCSSPrefix + 'btn-text dropdown-toggle btn btn-sm btn-link' + (config.disabled === true ? ' disabled' : '');
+                if (Ext.isString(config.componentCls)) {
+                    config.componentCls += ' dropdown';
+                } else {
+                    config.componentCls = 'dropdown';
+                }
+                config.iconAlign = 'right';
+                config.icon = '<clr-icon shape="caret down"></clr-icon>';
+            }
+            if (config.disabled === true) {
+                if (!config.cls) {
+                    config.cls = '';
+                }
+                config.cls += ' disabled';
+            }
+            if (config && config.icon && config.icon.indexOf(this.clrSignature) > -1) {
+                config.clrIconStr = config.icon;
+                config.icon = "images/empty.png";
+            }
+        }
+        return this.callParent(arguments);
+    },
+    replaceClrIcon: function(icon) {
+        if (this.btnIconEl) {
+            var clrIconStr = getClrIcon(icon);
+            var btnIconEl = this.btnIconEl.dom;
+            btnIconEl.style.backgroundImage = 'none';
+            btnIconEl.innerHTML = clrIconStr;
+        }
+    },
+
+    onRender: function() {
+        var result = this.callParent(arguments);
+        if (this.clrIconStr) {
+            this.replaceClrIcon(this.clrIconStr);
+        }
+        return result;
+    },
+
+    setIcon: function(icon) {
+        if (icon && icon.indexOf(this.clrSignature) > -1) {
+            var result = this.callParent(["images/empty.png"]);
+            this.replaceClrIcon(icon);
+            this.clrIconStr = icon;
+            return result;
+        } else {
+            this.clrIconStr = null;
+        }
+        return this.callParent(arguments);
+    },
+
+    enable: function() {
+        if (this.menuButton === true && this.menu && this.manipulateUI) {
+            this.btnEl && this.btnEl.removeCls('disabled');
+        } else {
+            this.removeCls('disabled');
+        }
+        return this.callParent(arguments);
+    },
+    disable : function() {
+        if (this.menuButton === true && this.menu && this.manipulateUI) {
+            this.btnEl && this.btnEl.addCls('disabled');
+        } else {
+            this.addCls('disabled');
+        }
+        return this.callParent(arguments);
+    },
+    setMenu: function() {
+        var result = this.callParent(arguments);
+        if (this.rendered && this.manipulateUI) {
+            if (this.menuButton && this.menu) {
+                this.btnEl.addCls('dropdown-toggle btn btn-sm btn-link' + (this.isDisabled() ? ' disabled' : ''));
+                this.ariaEl.addCls('dropdown');
+                this.setUI('');
+                this.setIcon('<clr-icon shape="caret down"></clr-icon>');
+                this.setIconAlign('right');
+            } else {
+                this.btnEl.removeCls('dropdown-toggle btn btn-sm btn-link' + (this.isDisabled() ? ' disabled' : ''));
+                this.ariaEl.removeCls('dropdown');
+                this.setUI('default');
+                this.setIconAlign('left');
+                if (!this.preserveIcon) {
+                    this.setIcon(null);
+                }
+            }
+        }
+        return result;
+    }
+});
+
+Ext.override(Ext.grid.RowEditorButtons, {
+    constructor: function(config) {
+        var me = this,
+            rowEditor = config.rowEditor,
+            cssPrefix = Ext.baseCSSPrefix,
+            plugin = rowEditor.editingPlugin;
+
+        config = Ext.apply({
+            baseCls: cssPrefix + 'grid-row-editor-buttons',
+            defaults: {
+                xtype: 'button',
+                ui: rowEditor.buttonUI,
+                scope: plugin,
+                flex: 1,
+                minWidth: Ext.panel.Panel.prototype.minButtonWidth
+            },
+            items: [{
+                cls: 'btn btn-primary btn-sm',
+                itemId: 'update',
+                handler: plugin.completeEdit,
+                text: rowEditor.saveBtnText,
+                disabled: rowEditor.updateButtonDisabled
+            }, {
+                cls: 'btn btn-outline btn-sm',
+                itemId: 'cancel',
+                handler: plugin.cancelEdit,
+                text: rowEditor.cancelBtnText
+            }]
+        }, config);
+
+        me.callParent([config]);
+
+        me.addClsWithUI(me.position);
+    },
+});
+
+Ext.override(Ext.ProgressBar, {
+    textLabel: null,
+    renderTpl: [
+        '<div id="{id}-bar" data-ref="bar" class="{baseCls}-bar {baseCls}-bar-{ui}" role="presentation" style="display:none; width:{percentage}%">',
+            '<tpl if="internalText">',
+                '<div class="{baseCls}-text" role="presentation">',
+                    '<div>{text}</div>',
+                '</div>',
+            '</tpl>',
+        '</div>',
+        '<div>',
+            '<div style="vertical-align:middle; display:table-cell;width:100%">',
+                '<div class="progress-background" style="width:100%;">',
+                    '<div class="progress-bar" style="width:{percentage}%"></div>',
+                '</div>',
+            '</div>',
+            '<div class="progress-percent" style="display:table-cell;"></div>',
+        '</div>'
+    ],
+
+    updateText: function(text) {
+        var me = this;
+        if (!me.autoText) {
+            me.text = text;
+        }
+        if (me.rendered) {
+            var barEl = me.el.select('.progress-bar');
+            barEl.setStyle('width', (me.value * 100) + '%');
+            percentEl = me.el.select('.progress-percent');
+            var percentText = Ext.String.format(bundle['extjs.progress.percent'], Math.round(me.value ? me.value * 100 : 0));
+            percentEl.setHtml(percentText);
+            if (me.progressLabel) {
+                if (text != percentText)
+                me.progressLabel.setText(text);
+            }
+            if (!me.autoText) {
+                me.ariaEl.dom.setAttribute('aria-valuetext', text);
+            } else {
+                me.ariaEl.dom.removeAttribute('aria-valuetext');
+            }
+        }
+        return me;
+    },
+
+    updateProgress: function(value, text, animate) {
+        var me = this;
+        var result = me.callParent(arguments);
+        me.updateText("");
+        return result;
+    },
+
+    onRender : function() {
+        var me = this;
+        var result = me.callParent(arguments);
+        me.updateText("");
+        return result;
+    }
+});
+
+Ext.override(Ext.picker.Date, {
+    beforeRender: function() {
+        var me = this;
+        var result = me.callParent(arguments);
+        if (me.todayBtn) {
+            me.todayBtn.ui = '';
+            me.todayBtn.addCls('btn btn-primary btn-sm');
+        }
+        return result;
+    }
+});
+
+Ext.override(Ext.picker.Month, {
+    beforeRender: function() {
+        var me = this;
+        var result = me.callParent(arguments);
+        if (me.cancelBtn) {
+            me.cancelBtn.ui = '';
+            me.cancelBtn.addCls('btn btn-primary btn-sm');
+            me.cancelBtn.style = {padding:'0 2px'};
+        }
+        if (me.okBtn) {
+            me.okBtn.ui = '';
+            me.okBtn.addCls('btn btn-primary btn-sm');
+            me.okBtn.style = {padding:'0 2px'};
+        }
+        return result;
+    }
+});
+
+Ext.override(Ext.tab.Panel, {
+    plain: true,
+    bodyBorder: false
+});
+
+Ext.override(Ext.tab.Bar, {
+    padding: "0 0 0 15px",
+    height: 37,
+    cls: 'mainTabPanelTabBar nav',
+    constructor: function(config) {
+        if (config) {
+            config.activateOnFocus = false;
+        }
+        return this.callParent(arguments);
+    }
+});
+
+Ext.override(Ext.tab.Tab, {
+    activate: function() {
+        if (this.btnInnerEl) {
+            this.btnInnerEl.addCls(this._activeCls);
+        }
+        return this.callParent(arguments);
+    },
+    deactivate: function() {
+        if (this.btnInnerEl) {
+            this.btnInnerEl.removeCls(this._activeCls);
+        }
+        return this.callParent(arguments);
+    },
+
+    initComponent: function() {
+        if (this.ui == "default" && this.clarity != false) {
+            var config = {
+                ui: "",
+                componentCls: 'nav-item',
+                cls: 'nav-item',
+                baseCls: 'nav-item',
+                _innerCls: 'nav-link',
+                _activeCls: 'active',
+                closeText: "&times;"
+            };
+            this.on("afterrender", function () {
+                if (this.active) {
+                    this.btnInnerEl.addCls("active");
+                }
+            }, this);
+            Ext.apply(this, config);
+        }
+        return this.callParent(arguments);
+    }
+});
+
+Ext.override(Ext.menu.Separator, {
+    separatorCls: 'dropdown-divider',
+    height: 2
+});
+
+Ext.override(Ext.menu.Menu, {
+    baseCls: 'dropdown',
+    constructor: function() {
+        var result =  this.callParent(arguments);
+        this.bodyCls += ' dropdown-menu';
+        return result;
+    },
+
+    preventClick: function(e) {
+        // Checking click target elements class for clarity radio item or checkbox.
+        var clsName = (e.getTarget().parentNode ? e.getTarget().parentNode.className : null);
+        if (clsName == 'radio-inline' || clsName == 'checkbox-inline'){
+            return;
+        }
+        return this.callParent(arguments);
+    }
+});
+
+Ext.override(Ext.menu.Item, {
+    linkCls: 'dropdown-item',
+    clrSignature: '<clr-icon',
+    constructor: function(config) {
+        if (config && config.icon && config.icon.indexOf(this.clrSignature) > -1) {
+            config.clrIconStr = config.icon;
+            config.icon = "images/empty.png";
+        }
+        return this.callParent(arguments);
+    },
+
+    replaceClrIcon: function(text) {
+        if (this.iconEl) {
+            var iconCmp = this.iconEl.dom;
+            iconCmp.style.backgroundImage = 'none';
+            iconCmp.innerHTML = getClrIcon(text);
+        }
+    },
+
+    onRender: function() {
+        var result = this.callParent(arguments);
+        if (this.clrIconStr) {
+            this.replaceClrIcon(this.clrIconStr);
+        }
+        return result;
+    },
+
+    setIcon: function(icon) {
+        if (icon && icon.indexOf(this.clrSignature) > -1) {
+            this.replaceClrIcon(icon)
+            this.clrIconStr = icon;
+            return this;
+        } else {
+            this.clrIconStr = null;
+        }
+        return this.callParent(arguments);
+    }
+});
+
+Ext.override(Ext.grid.column.Column, {
+    renderTpl: [
+        '<div id="{id}-titleEl" data-ref="titleEl" role="presentation"',
+        '{tipMarkup}class="',
+        Ext.baseCSSPrefix,
+        'column-header-inner<tpl if="!$comp.isContainer"> ',
+        Ext.baseCSSPrefix,
+        'leaf-column-header</tpl>',
+        '<tpl if="empty"> ',
+        Ext.baseCSSPrefix,
+        'column-header-inner-empty</tpl>">',
+        //
+        // TODO:
+        // When IE8 retires, revisit https://jsbin.com/honawo/quiet for better way to center header text
+        //
+        '<div class="',
+        Ext.baseCSSPrefix,
+        'column-header-separator">',
+        '<div id="{id}-textContainerEl" data-ref="textContainerEl" role="presentation" class="',
+        Ext.baseCSSPrefix,
+        'column-header-text-container">',
+        '<div role="presentation" class="',
+        Ext.baseCSSPrefix,
+        'column-header-text-wrapper">',
+        '<div id="{id}-textEl" data-ref="textEl" role="presentation" class="',
+        Ext.baseCSSPrefix,
+        'column-header-text',
+        '{childElCls}">',
+        '<span id="{id}-textInnerEl" data-ref="textInnerEl" role="presentation" class="',
+        Ext.baseCSSPrefix,
+        'column-header-text-inner">{text}</span>',
+        '</div>',
+        '{%',
+        'values.$comp.afterText(out, values);',
+        '%}',
+        '</div>',
+        '</div>',
+        '<tpl if="!menuDisabled">',
+        '<div id="{id}-triggerEl" data-ref="triggerEl" role="presentation" unselectable="on" class="',
+        Ext.baseCSSPrefix,
+        'column-header-trigger',
+        '{childElCls}" style="{triggerStyle}"></div>',
+        '</tpl>',
+        '</div>',
+        '</div>',
+        '{%this.renderContainer(out,values)%}'
+    ]
+});
+
+Ext.override(Ext.resizer.Splitter, {
+    collapsible: false,
+
+    onRender : function() {
+        var me = this;
+        var result = me.callParent(arguments);
+        var cmp = me.getCollapseTarget();
+        me.el.dom.style.visibility = cmp.collapsed ? 'hidden' : 'visible';
+        return result;
+    },
+
+    onBeforeTargetExpand: function(target) {
+        var me = this;
+        var result = me.callParent(arguments);
+        me.el.dom.style.visibility='visible';
+        return result;
+    },
+
+    onBeforeTargetCollapse: function(){
+        var me = this;
+        var result = me.callParent(arguments);
+        me.el.dom.style.visibility='hidden';
+        return result;
+    }
+});
+
+Ext.override(Ext.layout.container.Accordion, {
+    hideCollapseTool: true
+});
+
+Ext.override(Ext.selection.CheckboxModel, {
+    headerWidth: 30
+});
+
+Ext.override(Ext.menu.CheckItem, {
+    partialCls: Ext.baseCSSPrefix + 'menu-item-partial',
+    isPartial: false,
+
+    /**
+     * Sets the partial state of the item
+     * @param {Boolean} Partial True to check, false to un-check
+     */
+    setPartial : function(value) {
+        var me = this;
+        if (value === true) {
+            me.addCls(me.partialCls);
+            me.isPartial = true;
+        }
+        else if (value === false) {
+            me.removeCls(me.partialCls);
+            me.isPartial = false;
+        }
+    },
+
+    setChecked: function(checked, suppressEvents) {
+        var me = this;
+        var result = me.callParent(arguments);
+        if (!me.skipPartial && me.isPartial) {
+            this.setPartial(false);
+        }
+        return result;
+    },
+
+    initComponent: function() {
+        var me = this;
+        var result = me.callParent(arguments);
+        if (me.isPartial) {
+            me.setPartial(true);
+        }
+        return result;
+    },
+    
+    afterRender: function() {
+        var me = this;
+        me.callSuper(arguments);
+        me.checked = !me.checked;
+        me.skipPartial = true;
+        me.initial = true;
+        me.setChecked(!me.checked, true, true);
+        delete me.skipPartial;
+        me.initial = false;
+        if (me.checkChangeDisabled) {
+            me.disableCheckChange();
+        }
+        // For reasons unknown, clicking a div inside anchor element might cause
+        // the anchor to be blurred in Firefox. We can't allow this to happen
+        // because blurring will cause focusleave which will hide the menu
+        // before click event fires. See https://sencha.jira.com/browse/EXTJS-18882
+        if (Ext.isGecko && me.checkEl) {
+            me.checkEl.on('mousedown', me.onMouseDownCheck);
+        }
+    }
+});
