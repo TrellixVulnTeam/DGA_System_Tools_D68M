@@ -588,11 +588,86 @@ def newReadVersion():
                         else:
                             setround = setround + 1;
 
+def newReadVersionPoweroff():
+
+    setpayload = list();
+
+    datap = '';
+
+    i = 0;
+
+    with open('.\Program\Genreport\D.html', 'r', encoding="utf-8") as getfromhtml:
+
+        sethtmltotext = getfromhtml.read();
+
+        getlines = sethtmltotext.split('<b>H:</b>');
+
+        while True:
+
+            if i >= 44:
+                break;
+            elif '</span><span data-z-index="3"' in getlines[i]:
+
+                for x in getlines[i]:
+
+                    if '<' in x:
+                        break;
+                    else:
+                        datap = datap + x;
+
+                setpayload.append(datap)
+                datap = '';
+                i = i + 1;
+
+            elif i == 0:
+
+                i = i + 1;
+
+        with open('.\Program\Genreport\Royalcpu.text', 'w') as setcpu:
+            with open('.\Program\Genreport\Royalram.text', 'w') as setram:
+                with open('.\Program\Genreport\Royalnet.text', 'w') as setnet:
+
+                    setround = 0
+                    print(len(setpayload))
+                    for x in setpayload:
+                        if setround > 30:
+                            if setround == 44:
+                                setnet.write('0' + '\n');
+                                setround = setround + 1;
+                            elif setround < 44 or setround == 45:
+                                setnet.write(x + '\n');
+                                setround = setround + 1;
+
+                        elif setround > 15:
+
+                            if setround == 29 :
+                                setram.write('0' + '\n');
+                                setround = setround + 1;
+                                setram.write(x + '\n');
+                                setround = setround + 1;
+                            elif setround < 30 :
+                                setram.write(x + '\n');
+                                setround = setround + 1;
+
+                        elif setround != 0 and setround <= 15:
+
+                            if setround == 14 :
+                                setcpu.write('0' + '\n');
+                                setround = setround + 1;
+                                setcpu.write(x + '\n');
+                                setround = setround + 1;
+                            elif setround < 15 :
+                                setcpu.write(x + '\n');
+                                setround = setround + 1;
+                        else:
+                            setround = setround + 1;
+
 
 #readHTML();
 #readset();
 
-newReadVersion();
+#newReadVersion();
+newReadVersionPoweroff();
 
 #setCPUFuntion();
 #setRAMFuntion();
@@ -601,5 +676,5 @@ newReadVersion();
 #readset();
 setShowReport();
 setReportFile();
-setSendReport();
+#setSendReport();
 
