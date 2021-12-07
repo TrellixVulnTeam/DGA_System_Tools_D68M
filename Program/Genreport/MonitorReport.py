@@ -303,7 +303,7 @@ def setSendReport():
 
         #setDate
 
-        setd = str(time.strftime("%d/%m/%Y"));
+        setd = str(time.strftime("%m/%d/%Y"));
         print(setd);
         time.sleep(5)
         #setdate = driver.find_element_by_xpath('//*[@id="form-container"]/div/div/div[1]/div/div[1]/div[2]/div[2]/div[2]/div/div[2]/div/div/div/input[1]');
